@@ -24,12 +24,13 @@ services:
     ports:
       - "${API_PORT:-3000}:3000"
     environment:
-      NODE_ENV: production
+      # Default development so local Flutter web (any localhost port) works without CORS_ORIGIN.
+      # For production-like runs: NODE_ENV=production JWT_SECRET=... CORS_ORIGIN=https://app.example.com
+      NODE_ENV: ${NODE_ENV:-development}
       PORT: "3000"
       DATABASE_URL: postgresql://gym:${POSTGRES_PASSWORD:-gym}@postgres:5432/gym
-      # JWT_SECRET must be provided — no fallback in production.
-      JWT_SECRET: ${JWT_SECRET}
-      # Optional: CORS_ORIGIN=https://yourapp.com
+      JWT_SECRET: ${JWT_SECRET:-}
+      # Required when NODE_ENV=production (comma-separated). Example Flutter web: http://localhost:65425
       CORS_ORIGIN: ${CORS_ORIGIN:-}
     depends_on:
       postgres:

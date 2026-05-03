@@ -34,6 +34,57 @@ const MIGRATIONS: Migration[] = [
         FOR EACH ROW EXECUTE FUNCTION set_updated_at();
     `,
   },
+  {
+    name: "002_create_exercises",
+    sql: `
+      CREATE TABLE IF NOT EXISTS exercises (
+        id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        name        TEXT        NOT NULL,
+        muscles     TEXT[]      NOT NULL DEFAULT '{}',
+        category    TEXT        NOT NULL,
+        is_system   BOOLEAN     NOT NULL DEFAULT false,
+        created_by  UUID        REFERENCES users(id) ON DELETE SET NULL,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+
+      CREATE INDEX IF NOT EXISTS exercises_created_by_idx ON exercises (created_by);
+      CREATE INDEX IF NOT EXISTS exercises_category_idx   ON exercises (category);
+      CREATE INDEX IF NOT EXISTS exercises_muscles_idx    ON exercises USING GIN (muscles);
+
+      CREATE OR REPLACE TRIGGER exercises_set_updated_at
+        BEFORE UPDATE ON exercises
+        FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+      CREATE TABLE IF NOT EXISTS user_favourite_exercises (
+        user_id     UUID        NOT NULL REFERENCES users(id)     ON DELETE CASCADE,
+        exercise_id UUID        NOT NULL REFERENCES exercises(id) ON DELETE CASCADE,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (user_id, exercise_id)
+      );
+    `,
+  },
+  {
+    name: "003_seed_exercises",
+    sql: `
+      INSERT INTO exercises (id, name, muscles, category, is_system) VALUES
+        ('a1000000-0000-0000-0000-000000000001', 'Wyciskanie sztangi na ławce',      ARRAY['chest','triceps'],                    'compound',    true),
+        ('a1000000-0000-0000-0000-000000000002', 'Podciąganie na drążku',            ARRAY['back','biceps'],                      'compound',    true),
+        ('a1000000-0000-0000-0000-000000000003', 'Przysiad ze sztangą',              ARRAY['legs','glutes'],                      'compound',    true),
+        ('a1000000-0000-0000-0000-000000000004', 'Wyciskanie hantli nad głowę',      ARRAY['shoulders','triceps'],                'compound',    true),
+        ('a1000000-0000-0000-0000-000000000005', 'Martwy ciąg',                      ARRAY['back','legs'],                        'compound',    true),
+        ('a1000000-0000-0000-0000-000000000006', 'Uginanie ramion z hantlami',       ARRAY['biceps'],                             'isolation',   true),
+        ('a1000000-0000-0000-0000-000000000007', 'Pompki na poręczach',              ARRAY['chest','triceps','shoulders'],        'calisthenics',true),
+        ('a1000000-0000-0000-0000-000000000008', 'Wiosłowanie sztangą',              ARRAY['back','biceps'],                      'compound',    true),
+        ('a1000000-0000-0000-0000-000000000009', 'Wypychanie nóg na suwnicy',        ARRAY['legs','glutes'],                      'isolation',   true),
+        ('a1000000-0000-0000-0000-000000000010', 'Unoszenie ramion bokiem',          ARRAY['shoulders'],                          'isolation',   true),
+        ('a1000000-0000-0000-0000-000000000011', 'Prostowanie ramion na wyciągu',    ARRAY['triceps'],                            'isolation',   true),
+        ('a1000000-0000-0000-0000-000000000012', 'Plank',                            ARRAY['abs'],                                'calisthenics',true),
+        ('a1000000-0000-0000-0000-000000000013', 'Burpees',                          ARRAY['legs','chest','abs'],                 'plyometric',  true),
+        ('a1000000-0000-0000-0000-000000000014', 'Rozciąganie łańcucha tylnego',     ARRAY['legs','back'],                        'mobility',    true)
+      ON CONFLICT (id) DO NOTHING;
+    `,
+  },
 ];
 
 const ADVISORY_LOCK_ID = 3_742_116_919;

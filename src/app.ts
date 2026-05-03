@@ -4,6 +4,7 @@ import express, { type NextFunction, type Request, type Response } from "express
 import helmet from "helmet";
 import { env, isDev } from "./config/env.js";
 import { authRouter } from "./routes/auth.js";
+import { exercisesRouter } from "./routes/exercises.js";
 import { healthRouter } from "./routes/health.js";
 
 export const createApp = () => {
@@ -26,6 +27,7 @@ export const createApp = () => {
 
   app.use(healthRouter);
   app.use(authRouter);
+  app.use(exercisesRouter);
 
   app.use((_req, res) => {
     res.status(404).json({ error: "not_found" });

@@ -20,3 +20,12 @@ export const registerLimiter = rateLimit({
   legacyHeaders: false,
   message: json429,
 });
+
+/** 300 requests per IP per minute on /exercises — covers heavy filter/search usage */
+export const exercisesLimiter = rateLimit({
+  windowMs: 60 * 1_000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: json429,
+});

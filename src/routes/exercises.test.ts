@@ -9,7 +9,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const { mockQuery, mockPool, mockGetPool } = vi.hoisted(() => {
   const mockQuery = vi.fn();
   const mockPool = { query: mockQuery };
-  const mockGetPool = vi.fn(() => mockPool as unknown as import("pg").Pool);
+  const mockGetPool = vi.fn(
+    (): import("pg").Pool | null => mockPool as unknown as import("pg").Pool,
+  );
   return { mockQuery, mockPool, mockGetPool };
 });
 
@@ -353,8 +355,7 @@ describe("POST /exercises/:id/favourite", () => {
   it("adds favourite and returns isFavourite=true", async () => {
     mockQuery
       .mockResolvedValueOnce({ rows: [{ id: EXERCISE_ID }] }) // exercise exists
-      .mockResolvedValueOnce({ rows: [] })                    // not yet favourite
-      .mockResolvedValueOnce({ rows: [] });                   // INSERT
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 });       // INSERT succeeded
 
     const res = await request(app)
       .post(`/exercises/${EXERCISE_ID}/favourite`)
@@ -370,8 +371,8 @@ describe("POST /exercises/:id/favourite", () => {
   it("removes favourite and returns isFavourite=false", async () => {
     mockQuery
       .mockResolvedValueOnce({ rows: [{ id: EXERCISE_ID }] }) // exercise exists
-      .mockResolvedValueOnce({ rows: [{ "?column?": 1 }] })   // already favourite
-      .mockResolvedValueOnce({ rows: [] });                   // DELETE
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 })        // INSERT conflict (already exists)
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 });       // DELETE
 
     const res = await request(app)
       .post(`/exercises/${EXERCISE_ID}/favourite`)

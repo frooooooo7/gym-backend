@@ -2,8 +2,12 @@ import { Router } from "express";
 import { z } from "zod";
 import { getPool } from "../db/pool.js";
 import { requireAuth, type AuthRequest } from "../middleware/auth.js";
+import { exercisesLimiter } from "../middleware/rate-limit.js";
 
 export const exercisesRouter = Router();
+
+// Apply rate limiting to all /exercises routes.
+exercisesRouter.use(exercisesLimiter);
 
 // ---------------------------------------------------------------------------
 // Validation schemas
@@ -44,6 +48,7 @@ interface ExerciseRow {
   muscles: string[];
   category: string;
   created_by: string | null;
+  created_at: Date;
   is_favourite: boolean;
 }
 
@@ -52,6 +57,7 @@ const formatExercise = (row: ExerciseRow, userId?: string) => ({
   name:        row.name,
   muscles:     row.muscles,
   category:    row.category,
+  createdAt:   row.created_at,
   isFavourite: row.is_favourite,
   isMine:      userId ? row.created_by === userId : false,
 });
@@ -83,19 +89,19 @@ exercisesRouter.get("/exercises", requireAuth, async (req, res) => {
     const params: unknown[] = [userId];
     const conditions: string[] = [];
 
-    // Search by name
+    // Search by name only (consistent with client-side offline search).
     if (q) {
       params.push(`%${q.toLowerCase()}%`);
       conditions.push(`lower(e.name) LIKE $${params.length}`);
     }
 
-    // Filter by muscle group
+    // Filter by muscle group.
     if (muscle !== "all") {
       params.push(muscle);
       conditions.push(`$${params.length} = ANY(e.muscles)`);
     }
 
-    // Filter by list type
+    // Filter by list type.
     switch (filter) {
       case "mine":
         conditions.push(`e.created_by = $1`);
@@ -104,6 +110,7 @@ exercisesRouter.get("/exercises", requireAuth, async (req, res) => {
         conditions.push(`ufe.user_id IS NOT NULL`);
         break;
       case "recent":
+        // 30-day window — mirrors the Flutter offline fallback.
         conditions.push(`e.created_at > now() - INTERVAL '30 days'`);
         break;
     }
@@ -122,6 +129,7 @@ exercisesRouter.get("/exercises", requireAuth, async (req, res) => {
         e.muscles,
         e.category,
         e.created_by,
+        e.created_at,
         (ufe.user_id IS NOT NULL) AS is_favourite
       FROM exercises e
       LEFT JOIN user_favourite_exercises ufe
@@ -164,12 +172,14 @@ exercisesRouter.post("/exercises", requireAuth, async (req, res) => {
     const { rows } = await pool.query(
       `INSERT INTO exercises (name, muscles, category, is_system, created_by)
        VALUES ($1, $2, $3, false, $4)
-       RETURNING id, name, muscles, category, created_by`,
+       RETURNING id, name, muscles, category, created_by, created_at`,
       [name, muscles, category, userId],
     );
 
     const row = rows[0] as ExerciseRow;
-    res.status(201).json(formatExercise({ ...row, is_favourite: false }, userId));
+    res.status(201).json(
+      formatExercise({ ...row, is_favourite: false }, userId),
+    );
   } catch (err) {
     console.error("[exercises/create]", err);
     res.status(500).json({ error: "internal_error" });
@@ -202,7 +212,7 @@ exercisesRouter.put("/exercises/:id", requireAuth, async (req, res) => {
       `UPDATE exercises
        SET name = $1, muscles = $2, category = $3
        WHERE id = $4 AND created_by = $5
-       RETURNING id, name, muscles, category, created_by`,
+       RETURNING id, name, muscles, category, created_by, created_at`,
       [name, muscles, category, id, userId],
     );
 
@@ -211,8 +221,7 @@ exercisesRouter.put("/exercises/:id", requireAuth, async (req, res) => {
       return;
     }
 
-    const row = rows[0] as ExerciseRow;
-
+    const row = rows[0] as Omit<ExerciseRow, "is_favourite">;
     const { rows: favRows } = await pool.query(
       "SELECT 1 FROM user_favourite_exercises WHERE user_id = $1 AND exercise_id = $2",
       [userId, id],
@@ -260,7 +269,7 @@ exercisesRouter.delete("/exercises/:id", requireAuth, async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// POST /exercises/:id/favourite — toggle favourite
+// POST /exercises/:id/favourite — atomic toggle favourite
 // ---------------------------------------------------------------------------
 
 exercisesRouter.post(
@@ -277,7 +286,7 @@ exercisesRouter.post(
     }
 
     try {
-      // Verify exercise exists
+      // Verify exercise exists first.
       const { rows: exRows } = await pool.query(
         "SELECT id FROM exercises WHERE id = $1",
         [id],
@@ -287,25 +296,25 @@ exercisesRouter.post(
         return;
       }
 
-      // Toggle: insert if missing, delete if present
-      const { rows: existing } = await pool.query(
-        "SELECT 1 FROM user_favourite_exercises WHERE user_id = $1 AND exercise_id = $2",
+      // Atomic toggle: attempt INSERT; if it conflicts the row already exists,
+      // ON CONFLICT DO NOTHING returns rowCount=0 → we DELETE instead.
+      // This eliminates the SELECT+INSERT race condition.
+      const { rowCount: inserted } = await pool.query(
+        `INSERT INTO user_favourite_exercises (user_id, exercise_id)
+         VALUES ($1, $2)
+         ON CONFLICT (user_id, exercise_id) DO NOTHING`,
         [userId, id],
       );
 
       let isFavourite: boolean;
-      if (existing.length > 0) {
+      if (inserted && inserted > 0) {
+        isFavourite = true;
+      } else {
         await pool.query(
           "DELETE FROM user_favourite_exercises WHERE user_id = $1 AND exercise_id = $2",
           [userId, id],
         );
         isFavourite = false;
-      } else {
-        await pool.query(
-          "INSERT INTO user_favourite_exercises (user_id, exercise_id) VALUES ($1, $2)",
-          [userId, id],
-        );
-        isFavourite = true;
       }
 
       res.json({ exerciseId: id, isFavourite });

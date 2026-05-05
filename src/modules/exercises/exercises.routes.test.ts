@@ -41,6 +41,8 @@ const makeExerciseRow = (overrides: Record<string, unknown> = {}) => ({
   name: "Wyciskanie sztangi na ławce",
   muscles: ["chest", "triceps"],
   category: "compound",
+  description: "",
+  image_url: null,
   created_by: null,
   is_favourite: false,
   ...overrides,
@@ -92,6 +94,14 @@ describe("GET /exercises", () => {
     expect(res.body).toEqual([]);
   });
 
+  it("list query restricts rows to system exercises or those created by the caller", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    await request(app).get("/exercises").set(authHeaders());
+    const [sql] = mockQuery.mock.calls[0] as [string];
+    expect(sql).toContain("e.is_system = true");
+    expect(sql).toContain("e.created_by = $1");
+  });
+
   it("maps database rows to API shape", async () => {
     const row = makeExerciseRow({ is_favourite: true });
     mockQuery.mockResolvedValueOnce({ rows: [row] });
@@ -105,6 +115,8 @@ describe("GET /exercises", () => {
       name: "Wyciskanie sztangi na ławce",
       muscles: ["chest", "triceps"],
       category: "compound",
+      description: "",
+      imageUrl: null,
       isFavourite: true,
       isMine: false,
     });
@@ -220,6 +232,55 @@ describe("POST /exercises", () => {
     // The Zod schema trims the name before inserting
     const [, params] = mockQuery.mock.calls[0] as [string, unknown[]];
     expect((params as string[])[0]).toBe("Trimmed");
+  });
+
+  const clientId = "550e8400-e29b-41d4-a716-446655440000";
+
+  it("returns 400 when clientId is not a valid UUID", async () => {
+    const res = await request(app)
+      .post("/exercises")
+      .set(authHeaders())
+      .send({ ...validBody, clientId: "not-a-uuid" });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 201 when clientId upsert inserts a new row", async () => {
+    const row = makeExerciseRow({
+      created_by: USER_ID,
+      name: "Idempotent",
+      id: "e0000000-0000-0000-0000-000000000099",
+    });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ ...row, inserted: true }],
+    });
+
+    const res = await request(app)
+      .post("/exercises")
+      .set(authHeaders())
+      .send({ ...validBody, name: "Idempotent", clientId });
+
+    expect(res.status).toBe(201);
+    expect(res.body.id).toBe(row.id);
+  });
+
+  it("returns 200 when clientId upsert updates an existing row", async () => {
+    const row = makeExerciseRow({
+      created_by: USER_ID,
+      name: "Idempotent v2",
+      id: "e0000000-0000-0000-0000-000000000099",
+    });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ ...row, inserted: false }],
+    });
+
+    const res = await request(app)
+      .post("/exercises")
+      .set(authHeaders())
+      .send({ ...validBody, name: "Idempotent v2", clientId });
+
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe(row.id);
   });
 });
 
@@ -344,8 +405,8 @@ describe("POST /exercises/:id/favourite", () => {
     expect(res.status).toBe(401);
   });
 
-  it("returns 404 when exercise does not exist", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [] }); // exercise check
+  it("returns 404 when exercise is missing or not visible to the user", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // visibility check
 
     const res = await request(app)
       .post(`/exercises/${EXERCISE_ID}/favourite`)

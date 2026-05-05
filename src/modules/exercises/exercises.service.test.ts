@@ -3,10 +3,12 @@ import { createExercisesService } from "./exercises.service.js";
 
 const repo = {
   list: vi.fn(),
-  insert: vi.fn(),
+  insertUserExercise: vi.fn(),
   update: vi.fn(),
   deleteIfOwned: vi.fn(),
-  exerciseExists: vi.fn(),
+  exerciseVisibleToUser: vi.fn(),
+  getOwnedExerciseImageMeta: vi.fn(),
+  updateExerciseImageUrl: vi.fn(),
   insertFavouriteIfAbsent: vi.fn(),
   deleteFavourite: vi.fn(),
   hasFavourite: vi.fn(),
@@ -18,7 +20,7 @@ describe("createExercisesService", () => {
   });
 
   it("toggleFavourite deletes when insert reports no new row", async () => {
-    repo.exerciseExists.mockResolvedValue(true);
+    repo.exerciseVisibleToUser.mockResolvedValue(true);
     repo.insertFavouriteIfAbsent.mockResolvedValue(0);
     repo.deleteFavourite.mockResolvedValue(undefined);
 
@@ -33,7 +35,7 @@ describe("createExercisesService", () => {
   });
 
   it("toggleFavourite returns isFavourite=true when insert adds a row", async () => {
-    repo.exerciseExists.mockResolvedValue(true);
+    repo.exerciseVisibleToUser.mockResolvedValue(true);
     repo.insertFavouriteIfAbsent.mockResolvedValue(1);
 
     const svc = createExercisesService(repo);
@@ -49,7 +51,7 @@ describe("createExercisesService", () => {
   });
 
   it("toggleFavourite throws exercise_not_found when exercise is missing", async () => {
-    repo.exerciseExists.mockResolvedValue(false);
+    repo.exerciseVisibleToUser.mockResolvedValue(false);
     const svc = createExercisesService(repo);
 
     await expect(svc.toggleFavourite("u1", "missing")).rejects.toMatchObject({

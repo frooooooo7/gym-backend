@@ -27,8 +27,11 @@ export const exercisesController = {
       return;
     }
     const userId = (req as AuthRequest).auth.sub;
-    const body = await exercisesService.create(userId, parsed.data);
-    res.status(201).json(body);
+    const { exercise, created } = await exercisesService.create(
+      userId,
+      parsed.data,
+    );
+    res.status(created ? 201 : 200).json(exercise);
   }),
 
   update: asyncHandler(async (req: Request, res: Response) => {
@@ -58,6 +61,24 @@ export const exercisesController = {
     const userId = (req as AuthRequest).auth.sub;
     const exerciseId = req.params.id!;
     const body = await exercisesService.toggleFavourite(userId, exerciseId);
+    res.status(200).json(body);
+  }),
+
+  uploadImage: asyncHandler(async (req: Request, res: Response) => {
+    const userId = (req as AuthRequest).auth.sub;
+    const exerciseId = req.params.id!;
+    const file = req.file;
+    if (!file) {
+      res.status(400).json({ error: "missing_image" });
+      return;
+    }
+    const publicPath = `/uploads/exercise-images/${file.filename}`;
+    const body = await exercisesService.uploadExerciseImage(
+      userId,
+      exerciseId,
+      publicPath,
+      file.path,
+    );
     res.status(200).json(body);
   }),
 };

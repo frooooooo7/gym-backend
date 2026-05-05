@@ -6,12 +6,18 @@ export interface ExerciseRow {
   name: string;
   muscles: string[];
   category: string;
+  description: string;
+  image_url: string | null;
   created_by: string | null;
   created_at: Date;
   is_favourite: boolean;
 }
 
 export type ExerciseRowSansFavourite = Omit<ExerciseRow, "is_favourite">;
+
+export type OwnedExerciseImageMeta =
+  | { owned: false }
+  | { owned: true; imageUrl: string | null };
 
 export const exercisesRepository = {
   list: async (
@@ -21,7 +27,9 @@ export const exercisesRepository = {
     const pool = requirePool();
     const { q, muscle, filter, limit, offset } = query;
     const params: unknown[] = [userId];
-    const conditions: string[] = [];
+    const conditions: string[] = [
+      "(e.is_system = true OR e.created_by = $1)",
+    ];
 
     if (q) {
       params.push(`%${q.toLowerCase()}%`);
@@ -45,8 +53,7 @@ export const exercisesRepository = {
         break;
     }
 
-    const where =
-      conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const where = `WHERE ${conditions.join(" AND ")}`;
 
     params.push(limit, offset);
     const limitParam = `$${params.length - 1}`;
@@ -58,6 +65,8 @@ export const exercisesRepository = {
         e.name,
         e.muscles,
         e.category,
+        e.description,
+        e.image_url,
         e.created_by,
         e.created_at,
         (ufe.user_id IS NOT NULL) AS is_favourite
@@ -73,36 +82,64 @@ export const exercisesRepository = {
     return rows as ExerciseRow[];
   },
 
-  insert: async (
+  /**
+   * Inserts a user-owned exercise. When `clientId` is set, insert is idempotent per user:
+   * same `created_by` + `client_id` updates body fields and returns the same row.
+   * `created` is false when an existing row was updated by conflict resolution.
+   */
+  insertUserExercise: async (
     name: string,
     muscles: string[],
     category: string,
+    description: string,
     userId: string,
-  ): Promise<ExerciseRowSansFavourite> => {
+    clientId: string | undefined,
+  ): Promise<{ row: ExerciseRowSansFavourite; created: boolean }> => {
     const pool = requirePool();
+
+    if (clientId) {
+      const { rows } = await pool.query(
+        `INSERT INTO exercises (name, muscles, category, is_system, created_by, description, client_id)
+         VALUES ($1, $2, $3, false, $4, $5, $6::uuid)
+         ON CONFLICT (created_by, client_id) WHERE client_id IS NOT NULL
+         DO UPDATE SET
+           name = EXCLUDED.name,
+           muscles = EXCLUDED.muscles,
+           category = EXCLUDED.category,
+           description = EXCLUDED.description
+         RETURNING id, name, muscles, category, description, image_url, created_by, created_at,
+           (xmax = 0) AS inserted`,
+        [name, muscles, category, userId, description, clientId],
+      );
+      const raw = rows[0] as ExerciseRowSansFavourite & { inserted: boolean };
+      const { inserted, ...row } = raw;
+      return { row: row as ExerciseRowSansFavourite, created: inserted };
+    }
+
     const { rows } = await pool.query(
-      `INSERT INTO exercises (name, muscles, category, is_system, created_by)
-       VALUES ($1, $2, $3, false, $4)
-       RETURNING id, name, muscles, category, created_by, created_at`,
-      [name, muscles, category, userId],
+      `INSERT INTO exercises (name, muscles, category, is_system, created_by, description)
+       VALUES ($1, $2, $3, false, $4, $5)
+       RETURNING id, name, muscles, category, description, image_url, created_by, created_at`,
+      [name, muscles, category, userId, description],
     );
-    return rows[0] as ExerciseRowSansFavourite;
+    return { row: rows[0] as ExerciseRowSansFavourite, created: true };
   },
 
   update: async (
     name: string,
     muscles: string[],
     category: string,
+    description: string,
     exerciseId: string,
     userId: string,
   ): Promise<ExerciseRowSansFavourite | null> => {
     const pool = requirePool();
     const { rows } = await pool.query(
       `UPDATE exercises
-       SET name = $1, muscles = $2, category = $3
-       WHERE id = $4 AND created_by = $5
-       RETURNING id, name, muscles, category, created_by, created_at`,
-      [name, muscles, category, exerciseId, userId],
+       SET name = $1, muscles = $2, category = $3, description = $4
+       WHERE id = $5 AND created_by = $6
+       RETURNING id, name, muscles, category, description, image_url, created_by, created_at`,
+      [name, muscles, category, description, exerciseId, userId],
     );
     if (rows.length === 0) {
       return null;
@@ -122,13 +159,53 @@ export const exercisesRepository = {
     return !!rowCount;
   },
 
-  exerciseExists: async (exerciseId: string): Promise<boolean> => {
+  exerciseVisibleToUser: async (
+    exerciseId: string,
+    userId: string,
+  ): Promise<boolean> => {
     const pool = requirePool();
     const { rows } = await pool.query(
-      "SELECT id FROM exercises WHERE id = $1",
-      [exerciseId],
+      `SELECT id FROM exercises
+       WHERE id = $1 AND (is_system = true OR created_by = $2)`,
+      [exerciseId, userId],
     );
     return rows.length > 0;
+  },
+
+  getOwnedExerciseImageMeta: async (
+    exerciseId: string,
+    userId: string,
+  ): Promise<OwnedExerciseImageMeta> => {
+    const pool = requirePool();
+    const { rows } = await pool.query(
+      `SELECT image_url FROM exercises WHERE id = $1 AND created_by = $2`,
+      [exerciseId, userId],
+    );
+    if (rows.length === 0) {
+      return { owned: false };
+    }
+    return {
+      owned: true,
+      imageUrl: rows[0].image_url as string | null,
+    };
+  },
+
+  updateExerciseImageUrl: async (
+    exerciseId: string,
+    userId: string,
+    imageUrl: string,
+  ): Promise<ExerciseRowSansFavourite | null> => {
+    const pool = requirePool();
+    const { rows } = await pool.query(
+      `UPDATE exercises SET image_url = $3
+       WHERE id = $1 AND created_by = $2
+       RETURNING id, name, muscles, category, description, image_url, created_by, created_at`,
+      [exerciseId, userId, imageUrl],
+    );
+    if (rows.length === 0) {
+      return null;
+    }
+    return rows[0] as ExerciseRowSansFavourite;
   },
 
   insertFavouriteIfAbsent: async (

@@ -85,6 +85,23 @@ const MIGRATIONS: Migration[] = [
       ON CONFLICT (id) DO NOTHING;
     `,
   },
+  {
+    name: "004_exercises_description_image",
+    sql: `
+      ALTER TABLE exercises ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
+      ALTER TABLE exercises ADD COLUMN IF NOT EXISTS image_url TEXT;
+    `,
+  },
+  {
+    name: "005_exercises_client_id",
+    sql: `
+      ALTER TABLE exercises ADD COLUMN IF NOT EXISTS client_id UUID;
+
+      CREATE UNIQUE INDEX IF NOT EXISTS exercises_client_id_per_user
+        ON exercises (created_by, client_id)
+        WHERE client_id IS NOT NULL;
+    `,
+  },
 ];
 
 const ADVISORY_LOCK_ID = 3_742_116_919;

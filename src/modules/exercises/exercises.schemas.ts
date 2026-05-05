@@ -40,6 +40,13 @@ export const upsertBodySchema = z.object({
     .transform((s) => s.trim()),
   muscles: z.array(z.enum(VALID_MUSCLES)).min(1, "missing_muscles"),
   category: z.enum(VALID_CATEGORIES, { message: "invalid_category" }),
+  description: z
+    .string()
+    .max(2000)
+    .optional()
+    .default("")
+    .transform((s) => s.trim()),
+  clientId: z.string().uuid().optional(),
 });
 
 export type ListQueryInput = z.infer<typeof listQuerySchema>;

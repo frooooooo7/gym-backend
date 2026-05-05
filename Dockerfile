@@ -20,6 +20,9 @@ RUN npm ci --omit=dev --ignore-scripts
 
 COPY --from=builder /app/dist ./dist
 
+# Writable by non-root user (multer saves exercise images here).
+RUN mkdir -p /app/uploads/exercise-images && chown -R node:node /app/uploads
+
 USER node
 
 EXPOSE 3000

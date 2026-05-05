@@ -1,0 +1,32 @@
+---
+description: Warstwowa architektura API (Express) — moduły, kontrolery, serwisy, repozytoria
+globs: src/**/*.ts
+alwaysApply: false
+---
+
+# gym-backend — architektura warstwowa
+
+Stack: Node.js (ESM), Express, PostgreSQL (`pg`), Zod. Nowe funkcje i refaktory trzymaj w tej konwencji.
+
+## Układ katalogów
+
+- `src/common/` — współdzielone: `errors.ts` (`AppError`), `async-handler.ts`, ewentualnie drobne utilsy (bez logiki domenowej).
+- `src/config/`, `src/db/`, `src/middleware/` — konfiguracja, pool/migracje, cross-cutting (auth, rate-limit).
+- `src/modules/<domena>/` — jeden folder na obszar (np. `health`, `auth`, `exercises`):
+  - `<domena>.routes.ts` — tylko `Router`, middleware (np. `requireAuth`, limitery), mapowanie ścieżek → kontroler.
+  - `<domena>.controller.ts` — HTTP: odczyt `req`, walidacja Zod, statusy `res`, **`asyncHandler`** dla async.
+  - `<domena>.service.ts` — logika biznesowa i orkiestracja; **bez** `express` i **bez** surowego SQL.
+  - `<domena>.repository.ts` — wyłącznie `pool.query` / dostęp do danych; użyj `requirePool()` z `src/db/require-pool.ts` (rzuca `AppError(503, "database_unavailable")` gdy brak puli).
+  - `<domena>.schemas.ts` — schematy Zod (body/query/params).
+
+`src/app.ts` — middleware globalne + montowanie routerów modułów + 404 + **jeden** handler błędów mapujący `AppError` na `{ error: "<code>" }`.
+
+## Zasady
+
+1. **Błędy domenowe** — rzucaj `AppError(statusCode, code)` z `src/common/errors.js`; nie duplikuj `try/catch` z `console.error` + 500 w każdej trasie.
+2. **SQL** — tylko w repozytoriach; serwisy wołają repozytoria. Filtry/parametry jak dotychczas (parametryzowane zapytania).
+3. **Testowalność** — przy potrzebie: fabryki `createXyzService(repo)` obok eksportu domyślnego (jak `createExercisesService`). Testy tras: Supertest + mock `src/db/pool.js`; testy serwisu: mock repozytorium.
+4. **Kontrakt API** — refaktory bez zmiany kształtu JSON/statusów dla istniejących endpointów (chyba że zadanie mówi inaczej).
+5. **Nowy moduł** — dopisz folder pod `src/modules/<nazwa>/` z pełnym zestawem warstw; nie dorzucaj logiki HTTP do repozytoriów ani SQL do kontrolerów.
+
+Importy w kodzie źródłowym z rozszerzeniem `.js` (wyjście ESM/tsc), zgodnie z resztą repozytorium.

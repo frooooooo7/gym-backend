@@ -2,10 +2,11 @@ import compression from "compression";
 import cors from "cors";
 import express, { type NextFunction, type Request, type Response } from "express";
 import helmet from "helmet";
+import { isAppError } from "./common/errors.js";
 import { env, isDev } from "./config/env.js";
-import { authRouter } from "./routes/auth.js";
-import { exercisesRouter } from "./routes/exercises.js";
-import { healthRouter } from "./routes/health.js";
+import { authRouter } from "./modules/auth/auth.routes.js";
+import { exercisesRouter } from "./modules/exercises/exercises.routes.js";
+import { healthRouter } from "./modules/health/health.routes.js";
 
 export const createApp = () => {
   const app = express();
@@ -33,7 +34,11 @@ export const createApp = () => {
     res.status(404).json({ error: "not_found" });
   });
 
-  app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+  app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+    if (isAppError(err)) {
+      res.status(err.statusCode).json({ error: err.code });
+      return;
+    }
     console.error(err);
     res.status(500).json({ error: "internal_error" });
   });

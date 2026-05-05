@@ -15,12 +15,12 @@ const { mockQuery, mockPool, mockGetPool } = vi.hoisted(() => {
   return { mockQuery, mockPool, mockGetPool };
 });
 
-vi.mock("../db/pool.js", () => ({
+vi.mock("../../db/pool.js", () => ({
   getPool: mockGetPool,
 }));
 
 // Import app AFTER the mock is registered.
-const { createApp } = await import("../app.js");
+const { createApp } = await import("../../app.js");
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -188,7 +188,10 @@ describe("POST /exercises", () => {
   });
 
   it("creates exercise and returns 201 with isMine=true", async () => {
-    const row = makeExerciseRow({ created_by: USER_ID, name: "Moje ćwiczenie" });
+    const row = makeExerciseRow({
+      created_by: USER_ID,
+      name: "Moje ćwiczenie",
+    });
     mockQuery.mockResolvedValueOnce({ rows: [row] });
 
     const res = await request(app)
@@ -266,7 +269,7 @@ describe("PUT /exercises/:id", () => {
     });
     mockQuery
       .mockResolvedValueOnce({ rows: [updatedRow] }) // UPDATE
-      .mockResolvedValueOnce({ rows: [] });           // favourite check
+      .mockResolvedValueOnce({ rows: [] }); // favourite check
 
     const res = await request(app)
       .put(`/exercises/${EXERCISE_ID}`)
@@ -283,7 +286,7 @@ describe("PUT /exercises/:id", () => {
   it("reflects existing favourite status after update", async () => {
     const updatedRow = makeExerciseRow({ created_by: USER_ID });
     mockQuery
-      .mockResolvedValueOnce({ rows: [updatedRow] })       // UPDATE
+      .mockResolvedValueOnce({ rows: [updatedRow] }) // UPDATE
       .mockResolvedValueOnce({ rows: [{ "?column?": 1 }] }); // favourite exists
 
     const res = await request(app)
@@ -355,7 +358,7 @@ describe("POST /exercises/:id/favourite", () => {
   it("adds favourite and returns isFavourite=true", async () => {
     mockQuery
       .mockResolvedValueOnce({ rows: [{ id: EXERCISE_ID }] }) // exercise exists
-      .mockResolvedValueOnce({ rows: [], rowCount: 1 });       // INSERT succeeded
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 }); // INSERT succeeded
 
     const res = await request(app)
       .post(`/exercises/${EXERCISE_ID}/favourite`)
@@ -371,8 +374,8 @@ describe("POST /exercises/:id/favourite", () => {
   it("removes favourite and returns isFavourite=false", async () => {
     mockQuery
       .mockResolvedValueOnce({ rows: [{ id: EXERCISE_ID }] }) // exercise exists
-      .mockResolvedValueOnce({ rows: [], rowCount: 0 })        // INSERT conflict (already exists)
-      .mockResolvedValueOnce({ rows: [], rowCount: 1 });       // DELETE
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // INSERT conflict (already exists)
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 }); // DELETE
 
     const res = await request(app)
       .post(`/exercises/${EXERCISE_ID}/favourite`)

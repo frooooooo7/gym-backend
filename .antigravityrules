@@ -1,0 +1,33 @@
+﻿---
+description: Warstwowa architektura API (Express) â€” moduĹ‚y, kontrolery, serwisy, repozytoria
+globs: src/**/*.ts
+alwaysApply: false
+---
+
+# gym-backend â€” architektura warstwowa
+
+Stack: Node.js (ESM), Express, PostgreSQL (`pg`), Zod. Nowe funkcje i refaktory trzymaj w tej konwencji.
+
+## UkĹ‚ad katalogĂłw
+
+- `src/common/` â€” wspĂłĹ‚dzielone: `errors.ts` (`AppError`), `async-handler.ts`, ewentualnie drobne utilsy (bez logiki domenowej).
+- `src/config/`, `src/db/`, `src/middleware/` â€” konfiguracja, pool/migracje, cross-cutting (auth, rate-limit).
+- `src/modules/<domena>/` â€” jeden folder na obszar (np. `health`, `auth`, `exercises`):
+  - `<domena>.routes.ts` â€” tylko `Router`, middleware (np. `requireAuth`, limitery), mapowanie Ĺ›cieĹĽek â†’ kontroler.
+  - `<domena>.controller.ts` â€” HTTP: odczyt `req`, walidacja Zod, statusy `res`, **`asyncHandler`** dla async.
+  - `<domena>.service.ts` â€” logika biznesowa i orkiestracja; **bez** `express` i **bez** surowego SQL.
+  - `<domena>.repository.ts` â€” wyĹ‚Ä…cznie `pool.query` / dostÄ™p do danych; uĹĽyj `requirePool()` z `src/db/require-pool.ts` (rzuca `AppError(503, "database_unavailable")` gdy brak puli).
+  - `<domena>.schemas.ts` â€” schematy Zod (body/query/params).
+
+`src/app.ts` â€” middleware globalne + montowanie routerĂłw moduĹ‚Ăłw + 404 + **jeden** handler bĹ‚Ä™dĂłw mapujÄ…cy `AppError` na `{ error: "<code>" }`.
+
+## Zasady
+
+1. **BĹ‚Ä™dy domenowe** â€” rzucaj `AppError(statusCode, code)` z `src/common/errors.js`; nie duplikuj `try/catch` z `console.error` + 500 w kaĹĽdej trasie.
+2. **SQL** â€” tylko w repozytoriach; serwisy woĹ‚ajÄ… repozytoria. Filtry/parametry jak dotychczas (parametryzowane zapytania).
+3. **TestowalnoĹ›Ä‡** â€” przy potrzebie: fabryki `createXyzService(repo)` obok eksportu domyĹ›lnego (jak `createExercisesService`). Testy tras: Supertest + mock `src/db/pool.js`; testy serwisu: mock repozytorium.
+4. **Kontrakt API** â€” refaktory bez zmiany ksztaĹ‚tu JSON/statusĂłw dla istniejÄ…cych endpointĂłw (chyba ĹĽe zadanie mĂłwi inaczej).
+5. **Nowy moduĹ‚** â€” dopisz folder pod `src/modules/<nazwa>/` z peĹ‚nym zestawem warstw; nie dorzucaj logiki HTTP do repozytoriĂłw ani SQL do kontrolerĂłw.
+
+Importy w kodzie ĹşrĂłdĹ‚owym z rozszerzeniem `.js` (wyjĹ›cie ESM/tsc), zgodnie z resztÄ… repozytorium.
+

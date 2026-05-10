@@ -1,10 +1,10 @@
 import type { Request, Response } from "express";
 import type { AuthRequest } from "../../middleware/auth.js";
 import { asyncHandler } from "../../common/async-handler.js";
+import { firstZodMessage } from "../../common/schemas.js";
 import {
   listQuerySchema,
   upsertBodySchema,
-  firstZodMessage,
 } from "./exercises.schemas.js";
 import { exercisesService } from "./exercises.service.js";
 

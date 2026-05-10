@@ -27,8 +27,3 @@ export const loginSchema = z.object({
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 
-export const firstZodMessage = (issues: z.ZodIssue[]): string => {
-  const issue = issues[0];
-  if (!issue) return "missing_fields";
-  return issue.message;
-};

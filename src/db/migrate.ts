@@ -102,6 +102,57 @@ const MIGRATIONS: Migration[] = [
         WHERE client_id IS NOT NULL;
     `,
   },
+  {
+    name: "006_create_training_plans",
+    sql: `
+      CREATE TABLE IF NOT EXISTS training_plans (
+        id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id       UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        client_id     UUID,
+        name          TEXT        NOT NULL,
+        note          TEXT,
+        selected_days INTEGER[]   NOT NULL DEFAULT '{}',
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS training_plans_client_id_per_user
+        ON training_plans (user_id, client_id)
+        WHERE client_id IS NOT NULL;
+
+      CREATE INDEX IF NOT EXISTS training_plans_user_id_idx
+        ON training_plans (user_id);
+
+      CREATE OR REPLACE TRIGGER training_plans_set_updated_at
+        BEFORE UPDATE ON training_plans
+        FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+      CREATE TABLE IF NOT EXISTS training_plan_exercises (
+        id          UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
+        client_id   UUID,
+        plan_id     UUID    NOT NULL REFERENCES training_plans(id) ON DELETE CASCADE,
+        exercise_id UUID    NOT NULL REFERENCES exercises(id) ON DELETE RESTRICT,
+        position    INTEGER NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS training_plan_exercises_plan_id_idx
+        ON training_plan_exercises (plan_id);
+
+      CREATE TABLE IF NOT EXISTS training_plan_sets (
+        id               UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
+        client_id        UUID,
+        plan_exercise_id UUID    NOT NULL REFERENCES training_plan_exercises(id) ON DELETE CASCADE,
+        position         INTEGER NOT NULL,
+        weight           TEXT,
+        reps             TEXT    NOT NULL DEFAULT '',
+        rir              TEXT,
+        tempo            TEXT
+      );
+
+      CREATE INDEX IF NOT EXISTS training_plan_sets_plan_exercise_id_idx
+        ON training_plan_sets (plan_exercise_id);
+    `,
+  },
 ];
 
 const ADVISORY_LOCK_ID = 3_742_116_919;

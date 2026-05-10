@@ -52,5 +52,3 @@ export const upsertBodySchema = z.object({
 export type ListQueryInput = z.infer<typeof listQuerySchema>;
 export type UpsertBodyInput = z.infer<typeof upsertBodySchema>;
 
-export const firstZodMessage = (issues: z.ZodIssue[]): string =>
-  issues[0]?.message ?? "missing_fields";

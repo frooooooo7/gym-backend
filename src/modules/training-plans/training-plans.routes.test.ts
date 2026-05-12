@@ -148,6 +148,19 @@ describe("training plans routes", () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
+  it("POST /training-plans returns 503 when the main database is unavailable", async () => {
+    mockGetPool.mockReturnValueOnce(null);
+
+    const res = await request(app)
+      .post("/training-plans")
+      .set(authHeaders())
+      .send(validBody);
+
+    expect(res.status).toBe(503);
+    expect(res.body).toMatchObject({ error: "database_unavailable" });
+    expect(mockConnect).not.toHaveBeenCalled();
+  });
+
   it("PUT /training-plans/:id returns 400 for invalid id", async () => {
     const res = await request(app)
       .put("/training-plans/not-a-uuid")

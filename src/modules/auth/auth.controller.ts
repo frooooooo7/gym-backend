@@ -1,11 +1,11 @@
 import type { Request, Response } from "express";
 import type { AuthRequest } from "../../middleware/auth.js";
 import { asyncHandler } from "../../common/async-handler.js";
+import { firstZodMessage } from "../../common/schemas.js";
 import { authService } from "./auth.service.js";
 import {
   loginSchema,
   registerSchema,
-  firstZodMessage,
 } from "./auth.schemas.js";
 
 export const authController = {

@@ -23,6 +23,7 @@ const sessionSetSchema = z.object({
   actualWeight: z.string().max(40).optional().nullable(),
   actualReps: z.string().max(40).optional().nullable(),
   actualRir: z.string().max(40).optional().nullable(),
+  actualTempo: z.string().max(80).optional().nullable(),
   completed: z.boolean().optional().default(false),
   completedAt: z.coerce.date().optional().nullable(),
 });

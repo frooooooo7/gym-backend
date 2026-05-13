@@ -65,6 +65,7 @@ const validBody = {
           plannedReps: "8",
           actualWeight: "62.5",
           actualReps: "8",
+          actualTempo: "3-1-1",
           completed: true,
           completedAt: "2026-05-12T10:15:00.000Z",
         },
@@ -113,6 +114,7 @@ const sessionSetRow = {
   actual_weight: "62.5",
   actual_reps: "8",
   actual_rir: null,
+  actual_tempo: "3-1-1",
   completed: true,
   completed_at: new Date("2026-05-12T10:15:00Z"),
 };
@@ -126,7 +128,7 @@ const whenSqlContains = (
       if (sqlStr.includes(pattern)) {
         return Promise.resolve({
           rows: result.rows ?? [],
-          rowCount: result.rowCount ?? (result.rows?.length ?? 0),
+          rowCount: result.rowCount ?? result.rows?.length ?? 0,
         });
       }
     }
@@ -177,7 +179,9 @@ describe("training sessions routes", () => {
       exercises: [
         {
           exerciseName: "Bench",
-          sets: [{ actualWeight: "62.5", completed: true }],
+          sets: [
+            { actualWeight: "62.5", actualTempo: "3-1-1", completed: true },
+          ],
         },
       ],
     });

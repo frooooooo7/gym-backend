@@ -38,6 +38,7 @@ const formatSession = (row: TrainingSessionRow) => ({
       actualWeight: set.actual_weight,
       actualReps: set.actual_reps,
       actualRir: set.actual_rir,
+      actualTempo: set.actual_tempo,
       completed: set.completed,
       completedAt: set.completed_at,
     })),
@@ -58,7 +59,11 @@ export const trainingSessionsService = {
     sessionId: string,
     body: TrainingSessionBodyInput,
   ) => {
-    const row = await trainingSessionsRepository.update(userId, sessionId, body);
+    const row = await trainingSessionsRepository.update(
+      userId,
+      sessionId,
+      body,
+    );
     if (!row) throw new AppError(404, "not_found_or_not_yours");
     return formatSession(row);
   },

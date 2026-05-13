@@ -15,6 +15,7 @@ export interface TrainingSessionSetRow {
   actual_weight: string | null;
   actual_reps: string | null;
   actual_rir: string | null;
+  actual_tempo: string | null;
   completed: boolean;
   completed_at: Date | null;
 }
@@ -94,9 +95,9 @@ const replaceChildren = async (
     const valuesClauses: string[] = [];
     const params: unknown[] = [];
     for (const [setIndex, set] of sets.entries()) {
-      const offset = setIndex * 12;
+      const offset = setIndex * 13;
       valuesClauses.push(
-        `($${offset + 1}::uuid, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12})`,
+        `($${offset + 1}::uuid, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13})`,
       );
       params.push(
         set.clientId ?? null,
@@ -109,6 +110,7 @@ const replaceChildren = async (
         trimOrNull(set.actualWeight),
         trimOrNull(set.actualReps),
         trimOrNull(set.actualRir),
+        trimOrNull(set.actualTempo),
         set.completed,
         set.completedAt ?? null,
       );
@@ -117,7 +119,7 @@ const replaceChildren = async (
       `INSERT INTO training_session_sets
         (client_id, session_exercise_id, position, planned_weight, planned_reps,
          planned_rir, planned_tempo, actual_weight, actual_reps, actual_rir,
-         completed, completed_at)
+         actual_tempo, completed, completed_at)
        VALUES ${valuesClauses.join(", ")}`,
       params,
     );
@@ -210,7 +212,7 @@ const loadSessions = async (
   const { rows: setRows } = await client.query(
     `SELECT id, client_id, session_exercise_id, position, planned_weight,
             planned_reps, planned_rir, planned_tempo, actual_weight,
-            actual_reps, actual_rir, completed, completed_at
+            actual_reps, actual_rir, actual_tempo, completed, completed_at
      FROM training_session_sets
      WHERE session_exercise_id = ANY($1::uuid[])
      ORDER BY position, id`,
@@ -225,7 +227,10 @@ const loadSessions = async (
   }
 
   const exercisesBySession = new Map<string, TrainingSessionExerciseRow[]>();
-  for (const row of exerciseRows as Omit<TrainingSessionExerciseRow, "sets">[]) {
+  for (const row of exerciseRows as Omit<
+    TrainingSessionExerciseRow,
+    "sets"
+  >[]) {
     const entry = { ...row, sets: setsByExercise.get(row.id) ?? [] };
     const list = exercisesBySession.get(row.session_id);
     if (list) list.push(entry);
@@ -289,7 +294,8 @@ export const trainingSessionsRepository = {
       return { row, created: rows[0].inserted as boolean };
     } catch (e) {
       await client.query("ROLLBACK");
-      if (isUniqueViolation(e)) throw new AppError(409, "active_session_exists");
+      if (isUniqueViolation(e))
+        throw new AppError(409, "active_session_exists");
       throw e;
     } finally {
       client.release();
@@ -336,7 +342,8 @@ export const trainingSessionsRepository = {
       return row ?? null;
     } catch (e) {
       await client.query("ROLLBACK");
-      if (isUniqueViolation(e)) throw new AppError(409, "active_session_exists");
+      if (isUniqueViolation(e))
+        throw new AppError(409, "active_session_exists");
       throw e;
     } finally {
       client.release();
@@ -347,7 +354,12 @@ export const trainingSessionsRepository = {
     const pool = requirePool();
     const client = await pool.connect();
     try {
-      const rows = await loadSessions(client, userId, "AND status = 'active'", []);
+      const rows = await loadSessions(
+        client,
+        userId,
+        "AND status = 'active'",
+        [],
+      );
       return rows[0] ?? null;
     } finally {
       client.release();

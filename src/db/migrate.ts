@@ -214,12 +214,20 @@ const MIGRATIONS: Migration[] = [
         actual_weight               TEXT,
         actual_reps                 TEXT,
         actual_rir                  TEXT,
+        actual_tempo                TEXT,
         completed                   BOOLEAN NOT NULL DEFAULT false,
         completed_at                TIMESTAMPTZ
       );
 
       CREATE INDEX IF NOT EXISTS training_session_sets_exercise_id_idx
         ON training_session_sets (session_exercise_id);
+    `,
+  },
+  {
+    name: "008_training_session_sets_actual_tempo",
+    sql: `
+      ALTER TABLE training_session_sets
+        ADD COLUMN IF NOT EXISTS actual_tempo TEXT;
     `,
   },
 ];

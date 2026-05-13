@@ -196,6 +196,17 @@ const loadSessions = async (
     [sessionIds],
   );
   const exerciseIds = exerciseRows.map((r) => r.id as string);
+
+  if (exerciseIds.length === 0) {
+    return sessionRows.map(
+      (row) =>
+        ({
+          ...row,
+          exercises: [],
+        }) as TrainingSessionRow,
+    );
+  }
+
   const { rows: setRows } = await client.query(
     `SELECT id, client_id, session_exercise_id, position, planned_weight,
             planned_reps, planned_rir, planned_tempo, actual_weight,
@@ -203,7 +214,7 @@ const loadSessions = async (
      FROM training_session_sets
      WHERE session_exercise_id = ANY($1::uuid[])
      ORDER BY position, id`,
-    [exerciseIds.length > 0 ? exerciseIds : ["00000000-0000-0000-0000-000000000000"]],
+    [exerciseIds],
   );
 
   const setsByExercise = new Map<string, TrainingSessionSetRow[]>();

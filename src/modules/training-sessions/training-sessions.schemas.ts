@@ -13,6 +13,11 @@ const optionalText = z
 
 const nullableUuid = postgresUuid.optional().nullable();
 
+const requiredDate = z.preprocess(
+  (value) => (value === null ? undefined : value),
+  z.coerce.date(),
+);
+
 const sessionSetSchema = z.object({
   clientId: postgresUuid.optional(),
   position: z.number().int().min(0).optional(),
@@ -47,7 +52,7 @@ export const trainingSessionBodySchema = z.object({
   planName: z.string().trim().min(1, "missing_plan_name").max(120),
   status: z.enum(["active", "completed", "cancelled"]),
   note: optionalText,
-  startedAt: z.coerce.date(),
+  startedAt: requiredDate,
   finishedAt: z.coerce.date().optional().nullable(),
   exercises: z.array(sessionExerciseSchema).min(1, "missing_exercises"),
 });

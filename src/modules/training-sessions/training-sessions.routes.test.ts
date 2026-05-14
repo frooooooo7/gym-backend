@@ -188,6 +188,44 @@ describe("training sessions routes", () => {
     expect(mockRelease).toHaveBeenCalledOnce();
   });
 
+  it("POST /training-sessions returns 400 when startedAt is null", async () => {
+    const res = await request(app)
+      .post("/training-sessions")
+      .set(authHeaders())
+      .send({ ...validBody, startedAt: null });
+
+    expect(res.status).toBe(400);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("POST /training-sessions returns 400 when exercise is not visible to user", async () => {
+    whenSqlContains({
+      "SELECT id FROM exercises": { rows: [] },
+    });
+
+    const res = await request(app)
+      .post("/training-sessions")
+      .set(authHeaders())
+      .send({
+        ...validBody,
+        exercises: [
+          {
+            ...validBody.exercises[0],
+            exerciseId: "a1000000-0000-0000-0000-000000000001",
+          },
+        ],
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ error: "exercise_not_found" });
+    expect(
+      mockQuery.mock.calls.some((call) =>
+        String(call[0]).includes("INSERT INTO training_sessions"),
+      ),
+    ).toBe(false);
+    expect(mockRelease).toHaveBeenCalledOnce();
+  });
+
   it("GET /training-sessions/history returns completed sessions", async () => {
     whenSqlContains({
       "FROM training_sessions": { rows: [sessionRow] },

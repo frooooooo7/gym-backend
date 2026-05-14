@@ -126,6 +126,30 @@ const replaceChildren = async (
   }
 };
 
+const assertExercisesVisible = async (
+  client: PoolClient,
+  userId: string,
+  body: TrainingSessionBodyInput,
+) => {
+  const ids = [
+    ...new Set(
+      body.exercises
+        .map((exercise) => exercise.exerciseId)
+        .filter((id): id is string => !!id),
+    ),
+  ];
+  if (ids.length === 0) return;
+
+  const { rows } = await client.query(
+    `SELECT id FROM exercises
+     WHERE id = ANY($1::uuid[]) AND (is_system = true OR created_by = $2)`,
+    [ids, userId],
+  );
+  if (rows.length !== ids.length) {
+    throw new AppError(400, "exercise_not_found");
+  }
+};
+
 const ensurePlanOwned = async (
   client: PoolClient,
   userId: string,
@@ -255,6 +279,7 @@ export const trainingSessionsRepository = {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+      await assertExercisesVisible(client, userId, body);
       await ensurePlanOwned(client, userId, body.planId ?? null);
       await ensureNoOtherActiveSession(client, userId, body);
       const { rows } = await client.query(
@@ -311,6 +336,7 @@ export const trainingSessionsRepository = {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+      await assertExercisesVisible(client, userId, body);
       await ensurePlanOwned(client, userId, body.planId ?? null);
       await ensureNoOtherActiveSession(client, userId, body, sessionId);
       const { rowCount } = await client.query(

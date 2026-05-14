@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { postgresUuid } from "../../common/schemas.js";
+import { postgresUuid, requiredDate, optionalDate } from "../../common/schemas.js";
 
 const optionalText = z
   .string()
@@ -13,10 +13,6 @@ const optionalText = z
 
 const nullableUuid = postgresUuid.optional().nullable();
 
-const requiredDate = z.preprocess(
-  (value) => (value === null ? undefined : value),
-  z.coerce.date(),
-);
 
 const sessionSetSchema = z.object({
   clientId: postgresUuid.optional(),
@@ -53,7 +49,7 @@ export const trainingSessionBodySchema = z.object({
   status: z.enum(["active", "completed", "cancelled"]),
   note: optionalText,
   startedAt: requiredDate,
-  finishedAt: z.coerce.date().optional().nullable(),
+  finishedAt: optionalDate,
   exercises: z.array(sessionExerciseSchema).min(1, "missing_exercises"),
 });
 

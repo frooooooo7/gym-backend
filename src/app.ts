@@ -10,6 +10,7 @@ import { exercisesRouter } from "./modules/exercises/exercises.routes.js";
 import { ensureExerciseImagesDir } from "./modules/exercises/exercises.image-upload.js";
 import { healthRouter } from "./modules/health/health.routes.js";
 import { trainingPlansRouter } from "./modules/training-plans/training-plans.routes.js";
+import { trainingSessionsRouter } from "./modules/training-sessions/training-sessions.routes.js";
 
 export const createApp = () => {
   const app = express();
@@ -39,6 +40,7 @@ export const createApp = () => {
   app.use(authRouter);
   app.use(exercisesRouter);
   app.use(trainingPlansRouter);
+  app.use(trainingSessionsRouter);
 
   app.use((_req, res) => {
     res.status(404).json({ error: "not_found" });

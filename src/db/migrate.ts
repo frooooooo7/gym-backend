@@ -153,6 +153,83 @@ const MIGRATIONS: Migration[] = [
         ON training_plan_sets (plan_exercise_id);
     `,
   },
+  {
+    name: "007_create_training_sessions",
+    sql: `
+      CREATE TABLE IF NOT EXISTS training_sessions (
+        id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id        UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        client_id      UUID,
+        plan_id        UUID        REFERENCES training_plans(id) ON DELETE SET NULL,
+        plan_client_id UUID,
+        plan_name      TEXT        NOT NULL,
+        status         TEXT        NOT NULL CHECK (status IN ('active', 'completed', 'cancelled')),
+        note           TEXT,
+        started_at     TIMESTAMPTZ NOT NULL,
+        finished_at    TIMESTAMPTZ,
+        created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS training_sessions_client_id_per_user
+        ON training_sessions (user_id, client_id)
+        WHERE client_id IS NOT NULL;
+
+      CREATE UNIQUE INDEX IF NOT EXISTS training_sessions_one_active_per_user
+        ON training_sessions (user_id)
+        WHERE status = 'active';
+
+      CREATE INDEX IF NOT EXISTS training_sessions_user_status_idx
+        ON training_sessions (user_id, status, started_at DESC);
+
+      CREATE OR REPLACE TRIGGER training_sessions_set_updated_at
+        BEFORE UPDATE ON training_sessions
+        FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+      CREATE TABLE IF NOT EXISTS training_session_exercises (
+        id                  UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
+        client_id           UUID,
+        session_id          UUID    NOT NULL REFERENCES training_sessions(id) ON DELETE CASCADE,
+        exercise_id         UUID    REFERENCES exercises(id) ON DELETE SET NULL,
+        exercise_client_id  UUID,
+        exercise_name       TEXT    NOT NULL,
+        exercise_muscles    TEXT[]  NOT NULL DEFAULT '{}',
+        exercise_category   TEXT    NOT NULL,
+        exercise_image_url  TEXT,
+        position            INTEGER NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS training_session_exercises_session_id_idx
+        ON training_session_exercises (session_id);
+
+      CREATE TABLE IF NOT EXISTS training_session_sets (
+        id                          UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
+        client_id                   UUID,
+        session_exercise_id         UUID    NOT NULL REFERENCES training_session_exercises(id) ON DELETE CASCADE,
+        position                    INTEGER NOT NULL,
+        planned_weight              TEXT,
+        planned_reps                TEXT    NOT NULL DEFAULT '',
+        planned_rir                 TEXT,
+        planned_tempo               TEXT,
+        actual_weight               TEXT,
+        actual_reps                 TEXT,
+        actual_rir                  TEXT,
+        actual_tempo                TEXT,
+        completed                   BOOLEAN NOT NULL DEFAULT false,
+        completed_at                TIMESTAMPTZ
+      );
+
+      CREATE INDEX IF NOT EXISTS training_session_sets_exercise_id_idx
+        ON training_session_sets (session_exercise_id);
+    `,
+  },
+  {
+    name: "008_training_session_sets_actual_tempo",
+    sql: `
+      ALTER TABLE training_session_sets
+        ADD COLUMN IF NOT EXISTS actual_tempo TEXT;
+    `,
+  },
 ];
 
 const ADVISORY_LOCK_ID = 3_742_116_919;

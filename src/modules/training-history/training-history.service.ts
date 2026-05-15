@@ -5,21 +5,21 @@ import {
   type TrainingHistorySetRow,
 } from "./training-history.repository.js";
 
-const toNumber = (value: string | null): number | null =>
+const toNumber = (value: string | number | null): number | null =>
   value === null ? null : Number(value);
 
 const mapSet = (set: TrainingHistorySetRow) => ({
   setIndex: set.set_index,
   planned: {
     weightKg: toNumber(set.planned_weight_kg),
-    reps: set.planned_reps,
-    rir: set.planned_rir,
+    reps: toNumber(set.planned_reps),
+    rir: toNumber(set.planned_rir),
     tempo: set.planned_tempo,
   },
   actual: {
     weightKg: toNumber(set.actual_weight_kg),
-    reps: set.actual_reps,
-    rir: set.actual_rir,
+    reps: toNumber(set.actual_reps),
+    rir: toNumber(set.actual_rir),
     tempo: set.actual_tempo,
   },
   completed: set.completed,

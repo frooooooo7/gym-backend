@@ -41,12 +41,12 @@ export interface TrainingHistorySetRow {
   session_exercise_id: string;
   set_index: number;
   planned_weight_kg: string | null;
-  planned_reps: number | null;
-  planned_rir: number | null;
+  planned_reps: string | number | null;
+  planned_rir: string | number | null;
   planned_tempo: string | null;
   actual_weight_kg: string | null;
-  actual_reps: number | null;
-  actual_rir: number | null;
+  actual_reps: string | number | null;
+  actual_rir: string | number | null;
   actual_tempo: string | null;
   completed: boolean;
 }
@@ -69,22 +69,21 @@ const BASE_LIST_SELECT = `
   SELECT
     ts.id,
     ts.started_at,
-    ts.ended_at,
+    ts.finished_at AS ended_at,
     COALESCE(
-      ts.duration_sec,
-      GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (COALESCE(ts.ended_at, now()) - ts.started_at)))::int)
+      GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (COALESCE(ts.finished_at, now()) - ts.started_at)))::int),
+      0
     ) AS duration_sec,
     ts.status,
     ts.plan_id,
-    tp.name AS plan_name,
+    ts.plan_name,
     COALESCE(ec.exercises_count, 0) AS exercises_count,
     COALESCE(sc.completed_sets_count, 0) AS completed_sets_count,
     ts.note,
-    ts.progress_type,
-    ts.progress_label,
+    NULL::text AS progress_type,
+    NULL::text AS progress_label,
     ts.updated_at
   FROM training_sessions ts
-  JOIN training_plans tp ON tp.id = ts.plan_id
   LEFT JOIN LATERAL (
     SELECT COUNT(*)::int AS exercises_count
     FROM training_session_exercises tse
@@ -129,9 +128,8 @@ export const trainingHistoryRepository = {
         OR EXISTS (
           SELECT 1
           FROM training_session_exercises tse
-          JOIN exercises e ON e.id = tse.exercise_id
           WHERE tse.session_id = ts.id
-            AND e.name ILIKE ${searchParam}
+            AND tse.exercise_name ILIKE ${searchParam}
         )
       )`);
     }
@@ -170,18 +168,17 @@ export const trainingHistoryRepository = {
       SELECT
         ts.id,
         ts.started_at,
-        ts.ended_at,
+        ts.finished_at AS ended_at,
         COALESCE(
-          ts.duration_sec,
-          GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (COALESCE(ts.ended_at, now()) - ts.started_at)))::int)
+          GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (COALESCE(ts.finished_at, now()) - ts.started_at)))::int),
+          0
         ) AS duration_sec,
         ts.status,
         ts.plan_id,
-        tp.name AS plan_name,
+        ts.plan_name,
         ts.note,
         ts.updated_at
       FROM training_sessions ts
-      JOIN training_plans tp ON tp.id = ts.plan_id
       WHERE ts.id = $1::uuid AND ts.user_id = $2
       `,
       [sessionId, userId],
@@ -197,10 +194,9 @@ export const trainingHistoryRepository = {
         tse.id,
         tse.session_id,
         tse.exercise_id,
-        e.name AS exercise_name,
+        tse.exercise_name,
         tse.position
       FROM training_session_exercises tse
-      JOIN exercises e ON e.id = tse.exercise_id
       WHERE tse.session_id = $1::uuid
       ORDER BY tse.position ASC, tse.id ASC
       `,
@@ -217,19 +213,19 @@ export const trainingHistoryRepository = {
       SELECT
         id,
         session_exercise_id,
-        set_index,
-        planned_weight_kg,
+        position AS set_index,
+        planned_weight AS planned_weight_kg,
         planned_reps,
         planned_rir,
         planned_tempo,
-        actual_weight_kg,
+        actual_weight AS actual_weight_kg,
         actual_reps,
         actual_rir,
         actual_tempo,
         completed
       FROM training_session_sets
       WHERE session_exercise_id = ANY($1::uuid[])
-      ORDER BY set_index ASC, id ASC
+      ORDER BY position ASC, id ASC
       `,
       [sessionExerciseIds],
     );

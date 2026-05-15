@@ -133,6 +133,25 @@ describe("training history routes", () => {
     });
   });
 
+  it("GET /api/v1/training-sessions keeps the legacy history page endpoint working", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [listRow] });
+
+    const res = await request(app)
+      .get("/api/v1/training-sessions?limit=20")
+      .set(authHeaders());
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      items: [
+        {
+          id: SESSION_ID,
+          status: "completed",
+          plan: { id: PLAN_ID, name: "Push/Pull/Legs" },
+        },
+      ],
+    });
+  });
+
   it("GET /api/v1/training-history returns 304 with matching If-None-Match", async () => {
     mockQuery.mockResolvedValue({ rows: [listRow] });
 

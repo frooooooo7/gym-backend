@@ -10,8 +10,17 @@ trainingHistoryRouter.get(
   trainingHistoryController.list,
 );
 trainingHistoryRouter.get(
+  "/api/v1/training-sessions",
+  requireAuth,
+  trainingHistoryController.list,
+);
+trainingHistoryRouter.get(
   "/api/v1/training-history/:sessionId",
   requireAuth,
   trainingHistoryController.detail,
 );
-
+trainingHistoryRouter.get(
+  "/api/v1/training-sessions/:sessionId",
+  requireAuth,
+  trainingHistoryController.detail,
+);

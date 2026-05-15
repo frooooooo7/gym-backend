@@ -8,7 +8,7 @@ const cursorPayloadSchema = z.object({
   id: z.string().regex(UUID_PATTERN, "invalid_cursor"),
 });
 
-export const trainingSessionIdParamsSchema = z.object({
+export const trainingHistoryIdParamsSchema = z.object({
   sessionId: z.string().regex(UUID_PATTERN, "invalid_session_id"),
 });
 
@@ -26,7 +26,7 @@ const optionalDateQuery = z
   .pipe(z.string().datetime({ offset: true }).optional())
   .transform((value) => (value ? new Date(value) : undefined));
 
-export const trainingSessionsListQuerySchema = z
+export const trainingHistoryListQuerySchema = z
   .object({
     cursor: z.string().optional().transform((value) => emptyToUndefined(value)),
     limit: z.coerce.number().int().min(1, "invalid_limit").max(50, "invalid_limit").default(20),
@@ -62,7 +62,7 @@ export const trainingSessionsListQuerySchema = z
     }
   });
 
-export type TrainingSessionsListQuery = z.infer<typeof trainingSessionsListQuerySchema>;
+export type TrainingHistoryListQuery = z.infer<typeof trainingHistoryListQuerySchema>;
 
 export const decodeCursor = (
   cursor: string | undefined,

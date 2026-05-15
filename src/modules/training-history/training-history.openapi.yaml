@@ -1,14 +1,14 @@
 openapi: 3.0.3
 info:
-  title: Gym Backend - Training Sessions API
+  title: Gym Backend - training history API
   version: 1.0.0
 servers:
   - url: /
 paths:
-  /api/v1/training-sessions:
+  /api/v1/training-history:
     get:
-      summary: List training sessions timeline
-      tags: [TrainingSessions]
+      summary: List training history timeline
+      tags: [TrainingHistory]
       security:
         - bearerAuth: []
       parameters:
@@ -58,7 +58,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TrainingSessionsListResponse"
+                $ref: "#/components/schemas/TrainingHistoryListResponse"
         "304":
           description: Not modified
         "400":
@@ -69,10 +69,10 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Unauthorized
-  /api/v1/training-sessions/{sessionId}:
+  /api/v1/training-history/{sessionId}:
     get:
-      summary: Get training session details
-      tags: [TrainingSessions]
+      summary: Get training history entry details
+      tags: [TrainingHistory]
       security:
         - bearerAuth: []
       parameters:
@@ -92,7 +92,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TrainingSessionDetailResponse"
+                $ref: "#/components/schemas/TrainingHistoryDetailResponse"
         "304":
           description: Not modified
         "400":
@@ -142,7 +142,7 @@ components:
         label:
           type: string
       nullable: true
-    TrainingSessionListItem:
+    TrainingHistoryListItem:
       type: object
       required:
         - id
@@ -185,14 +185,14 @@ components:
         updatedAt:
           type: string
           format: date-time
-    TrainingSessionsListResponse:
+    TrainingHistoryListResponse:
       type: object
       required: [items, nextCursor, hasMore]
       properties:
         items:
           type: array
           items:
-            $ref: "#/components/schemas/TrainingSessionListItem"
+            $ref: "#/components/schemas/TrainingHistoryListItem"
         nextCursor:
           type: string
           nullable: true
@@ -239,7 +239,7 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SessionSet"
-    TrainingSessionDetailResponse:
+    TrainingHistoryDetailResponse:
       type: object
       required:
         - id

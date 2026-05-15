@@ -82,32 +82,32 @@ const detailSetRow = {
   completed: true,
 };
 
-describe("training sessions routes", () => {
+describe("training history routes", () => {
   beforeEach(() => {
     mockQuery.mockReset();
     mockGetPool.mockReset();
     mockGetPool.mockReturnValue(mockPool as unknown as import("pg").Pool);
   });
 
-  it("GET /api/v1/training-sessions returns 401 without auth", async () => {
-    const res = await request(app).get("/api/v1/training-sessions");
+  it("GET /api/v1/training-history returns 401 without auth", async () => {
+    const res = await request(app).get("/api/v1/training-history");
     expect(res.status).toBe(401);
     expect(res.body).toMatchObject({ error: "unauthorized" });
   });
 
-  it("GET /api/v1/training-sessions returns 400 for invalid query", async () => {
+  it("GET /api/v1/training-history returns 400 for invalid query", async () => {
     const res = await request(app)
-      .get("/api/v1/training-sessions?limit=1000")
+      .get("/api/v1/training-history?limit=1000")
       .set(authHeaders());
     expect(res.status).toBe(400);
     expect(res.body).toMatchObject({ error: "invalid_limit" });
   });
 
-  it("GET /api/v1/training-sessions returns paginated rows in API shape", async () => {
+  it("GET /api/v1/training-history returns paginated rows in API shape", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [listRow] });
 
     const res = await request(app)
-      .get("/api/v1/training-sessions?limit=20")
+      .get("/api/v1/training-history?limit=20")
       .set(authHeaders());
 
     expect(res.status).toBe(200);
@@ -133,17 +133,17 @@ describe("training sessions routes", () => {
     });
   });
 
-  it("GET /api/v1/training-sessions returns 304 with matching If-None-Match", async () => {
+  it("GET /api/v1/training-history returns 304 with matching If-None-Match", async () => {
     mockQuery.mockResolvedValue({ rows: [listRow] });
 
     const first = await request(app)
-      .get("/api/v1/training-sessions?limit=20")
+      .get("/api/v1/training-history?limit=20")
       .set(authHeaders());
     const etag = first.headers.etag as string;
     expect(first.status).toBe(200);
 
     const second = await request(app)
-      .get("/api/v1/training-sessions?limit=20")
+      .get("/api/v1/training-history?limit=20")
       .set(authHeaders())
       .set("If-None-Match", etag);
 
@@ -151,31 +151,31 @@ describe("training sessions routes", () => {
     expect(second.text).toBe("");
   });
 
-  it("GET /api/v1/training-sessions/:sessionId returns 400 for invalid id", async () => {
+  it("GET /api/v1/training-history/:sessionId returns 400 for invalid id", async () => {
     const res = await request(app)
-      .get("/api/v1/training-sessions/not-a-uuid")
+      .get("/api/v1/training-history/not-a-uuid")
       .set(authHeaders());
     expect(res.status).toBe(400);
     expect(res.body).toMatchObject({ error: "invalid_session_id" });
   });
 
-  it("GET /api/v1/training-sessions/:sessionId returns 404 when missing", async () => {
+  it("GET /api/v1/training-history/:sessionId returns 404 when missing", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
     const res = await request(app)
-      .get(`/api/v1/training-sessions/${SESSION_ID}`)
+      .get(`/api/v1/training-history/${SESSION_ID}`)
       .set(authHeaders());
     expect(res.status).toBe(404);
     expect(res.body).toMatchObject({ error: "not_found_or_not_yours" });
   });
 
-  it("GET /api/v1/training-sessions/:sessionId returns detail in API shape", async () => {
+  it("GET /api/v1/training-history/:sessionId returns detail in API shape", async () => {
     mockQuery
       .mockResolvedValueOnce({ rows: [detailSessionRow] })
       .mockResolvedValueOnce({ rows: [detailExerciseRow] })
       .mockResolvedValueOnce({ rows: [detailSetRow] });
 
     const res = await request(app)
-      .get(`/api/v1/training-sessions/${SESSION_ID}`)
+      .get(`/api/v1/training-history/${SESSION_ID}`)
       .set(authHeaders());
 
     expect(res.status).toBe(200);
@@ -203,7 +203,7 @@ describe("training sessions routes", () => {
     });
   });
 
-  it("GET /api/v1/training-sessions/:sessionId returns 304 with matching If-None-Match", async () => {
+  it("GET /api/v1/training-history/:sessionId returns 304 with matching If-None-Match", async () => {
     mockQuery
       .mockResolvedValueOnce({ rows: [detailSessionRow] })
       .mockResolvedValueOnce({ rows: [detailExerciseRow] })
@@ -213,13 +213,13 @@ describe("training sessions routes", () => {
       .mockResolvedValueOnce({ rows: [detailSetRow] });
 
     const first = await request(app)
-      .get(`/api/v1/training-sessions/${SESSION_ID}`)
+      .get(`/api/v1/training-history/${SESSION_ID}`)
       .set(authHeaders());
     const etag = first.headers.etag as string;
     expect(first.status).toBe(200);
 
     const second = await request(app)
-      .get(`/api/v1/training-sessions/${SESSION_ID}`)
+      .get(`/api/v1/training-history/${SESSION_ID}`)
       .set(authHeaders())
       .set("If-None-Match", etag);
 

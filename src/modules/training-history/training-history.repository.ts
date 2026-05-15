@@ -1,6 +1,6 @@
 import { requirePool } from "../../db/require-pool.js";
 
-export interface TrainingSessionListRow {
+export interface TrainingHistoryListRow {
   id: string;
   started_at: Date;
   ended_at: Date | null;
@@ -16,7 +16,7 @@ export interface TrainingSessionListRow {
   updated_at: Date;
 }
 
-export interface TrainingSessionDetailRow {
+export interface TrainingHistoryDetailRow {
   id: string;
   started_at: Date;
   ended_at: Date | null;
@@ -28,7 +28,7 @@ export interface TrainingSessionDetailRow {
   updated_at: Date;
 }
 
-export interface TrainingSessionExerciseRow {
+export interface TrainingHistoryExerciseRow {
   id: string;
   session_id: string;
   exercise_id: string;
@@ -36,7 +36,7 @@ export interface TrainingSessionExerciseRow {
   position: number;
 }
 
-export interface TrainingSessionSetRow {
+export interface TrainingHistorySetRow {
   id: string;
   session_exercise_id: string;
   set_index: number;
@@ -51,7 +51,7 @@ export interface TrainingSessionSetRow {
   completed: boolean;
 }
 
-export interface TrainingSessionsListFilters {
+export interface TrainingHistoryListFilters {
   userId: string;
   limit: number;
   status?: "completed" | "cancelled" | "active";
@@ -98,8 +98,8 @@ const BASE_LIST_SELECT = `
   ) sc ON true
 `;
 
-export const trainingSessionsRepository = {
-  list: async (filters: TrainingSessionsListFilters): Promise<TrainingSessionListRow[]> => {
+export const trainingHistoryRepository = {
+  list: async (filters: TrainingHistoryListFilters): Promise<TrainingHistoryListRow[]> => {
     const pool = requirePool();
 
     const where: string[] = ["ts.user_id = $1"];
@@ -157,13 +157,13 @@ export const trainingSessionsRepository = {
     `;
 
     const { rows } = await pool.query(sql, params);
-    return rows as TrainingSessionListRow[];
+    return rows as TrainingHistoryListRow[];
   },
 
   findOneForUser: async (
     userId: string,
     sessionId: string,
-  ): Promise<TrainingSessionDetailRow | null> => {
+  ): Promise<TrainingHistoryDetailRow | null> => {
     const pool = requirePool();
     const { rows } = await pool.query(
       `
@@ -186,10 +186,10 @@ export const trainingSessionsRepository = {
       `,
       [sessionId, userId],
     );
-    return (rows[0] as TrainingSessionDetailRow | undefined) ?? null;
+    return (rows[0] as TrainingHistoryDetailRow | undefined) ?? null;
   },
 
-  findExercises: async (sessionId: string): Promise<TrainingSessionExerciseRow[]> => {
+  findExercises: async (sessionId: string): Promise<TrainingHistoryExerciseRow[]> => {
     const pool = requirePool();
     const { rows } = await pool.query(
       `
@@ -206,10 +206,10 @@ export const trainingSessionsRepository = {
       `,
       [sessionId],
     );
-    return rows as TrainingSessionExerciseRow[];
+    return rows as TrainingHistoryExerciseRow[];
   },
 
-  findSets: async (sessionExerciseIds: string[]): Promise<TrainingSessionSetRow[]> => {
+  findSets: async (sessionExerciseIds: string[]): Promise<TrainingHistorySetRow[]> => {
     if (sessionExerciseIds.length === 0) return [];
     const pool = requirePool();
     const { rows } = await pool.query(
@@ -233,7 +233,7 @@ export const trainingSessionsRepository = {
       `,
       [sessionExerciseIds],
     );
-    return rows as TrainingSessionSetRow[];
+    return rows as TrainingHistorySetRow[];
   },
 };
 

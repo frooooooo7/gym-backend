@@ -5,10 +5,10 @@ import { firstZodMessage } from "../../common/schemas.js";
 import type { AuthRequest } from "../../middleware/auth.js";
 import {
   decodeCursor,
-  trainingSessionIdParamsSchema,
-  trainingSessionsListQuerySchema,
-} from "./training-sessions.schemas.js";
-import { trainingSessionsService } from "./training-sessions.service.js";
+  trainingHistoryIdParamsSchema,
+  trainingHistoryListQuerySchema,
+} from "./training-history.schemas.js";
+import { trainingHistoryService } from "./training-history.service.js";
 
 const ERROR_MESSAGES: Record<string, string> = {
   invalid_limit: "limit must be an integer between 1 and 50",
@@ -36,9 +36,9 @@ const sendWithEtag = (req: Request, res: Response, body: unknown) => {
   res.status(200).json(body);
 };
 
-export const trainingSessionsController = {
+export const trainingHistoryController = {
   list: asyncHandler(async (req: Request, res: Response) => {
-    const parsed = trainingSessionsListQuerySchema.safeParse(req.query);
+    const parsed = trainingHistoryListQuerySchema.safeParse(req.query);
     if (!parsed.success) {
       const code = firstZodMessage(parsed.error.issues);
       res.status(400).json({ error: code, message: messageFor(code) });
@@ -47,7 +47,7 @@ export const trainingSessionsController = {
 
     const query = parsed.data;
     const userId = (req as AuthRequest).auth.sub;
-    const body = await trainingSessionsService.list({
+    const body = await trainingHistoryService.list({
       userId,
       limit: query.limit,
       status: query.status,
@@ -62,14 +62,14 @@ export const trainingSessionsController = {
   }),
 
   detail: asyncHandler(async (req: Request, res: Response) => {
-    const parsed = trainingSessionIdParamsSchema.safeParse(req.params);
+    const parsed = trainingHistoryIdParamsSchema.safeParse(req.params);
     if (!parsed.success) {
       const code = firstZodMessage(parsed.error.issues);
       res.status(400).json({ error: code, message: messageFor(code) });
       return;
     }
     const userId = (req as AuthRequest).auth.sub;
-    const body = await trainingSessionsService.getById(
+    const body = await trainingHistoryService.getById(
       userId,
       parsed.data.sessionId,
     );

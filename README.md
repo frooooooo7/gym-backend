@@ -1,8 +1,8 @@
 # gym-backend
 
-## Training sessions timeline API (MVP)
+## Training history timeline API (MVP)
 
-Contract source: `src/modules/training-sessions/training-sessions.openapi.yaml`
+Contract source: `src/modules/training-history/training-history.openapi.yaml`
 
 ### Auth
 
@@ -10,7 +10,7 @@ Contract source: `src/modules/training-sessions/training-sessions.openapi.yaml`
 
 ### Endpoints
 
-#### GET `/api/v1/training-sessions`
+#### GET `/api/v1/training-history`
 
 Query params:
 
@@ -25,7 +25,7 @@ Query params:
 Example request:
 
 ```http
-GET /api/v1/training-sessions?limit=20&status=completed&q=bench
+GET /api/v1/training-history?limit=20&status=completed&q=bench
 If-None-Match: W/"d9ff..."
 ```
 
@@ -58,7 +58,7 @@ Headers:
 - `ETag` on 200 responses
 - `304 Not Modified` when `If-None-Match` matches
 
-#### GET `/api/v1/training-sessions/{sessionId}`
+#### GET `/api/v1/training-history/{sessionId}`
 
 Example response:
 

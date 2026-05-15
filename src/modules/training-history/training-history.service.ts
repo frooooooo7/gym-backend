@@ -1,14 +1,14 @@
 import { AppError } from "../../common/errors.js";
-import { encodeCursor } from "./training-sessions.schemas.js";
+import { encodeCursor } from "./training-history.schemas.js";
 import {
-  trainingSessionsRepository,
-  type TrainingSessionSetRow,
-} from "./training-sessions.repository.js";
+  trainingHistoryRepository,
+  type TrainingHistorySetRow,
+} from "./training-history.repository.js";
 
 const toNumber = (value: string | null): number | null =>
   value === null ? null : Number(value);
 
-const mapSet = (set: TrainingSessionSetRow) => ({
+const mapSet = (set: TrainingHistorySetRow) => ({
   setIndex: set.set_index,
   planned: {
     weightKg: toNumber(set.planned_weight_kg),
@@ -25,7 +25,7 @@ const mapSet = (set: TrainingSessionSetRow) => ({
   completed: set.completed,
 });
 
-export interface TrainingSessionsListInput {
+export interface TrainingHistoryListInput {
   userId: string;
   limit: number;
   status?: "completed" | "cancelled" | "active";
@@ -39,9 +39,9 @@ export interface TrainingSessionsListInput {
   };
 }
 
-export const trainingSessionsService = {
-  list: async (input: TrainingSessionsListInput) => {
-    const rows = await trainingSessionsRepository.list(input);
+export const trainingHistoryService = {
+  list: async (input: TrainingHistoryListInput) => {
+    const rows = await trainingHistoryRepository.list(input);
     const hasMore = rows.length > input.limit;
     const visibleRows = hasMore ? rows.slice(0, input.limit) : rows;
 
@@ -80,7 +80,7 @@ export const trainingSessionsService = {
   },
 
   getById: async (userId: string, sessionId: string) => {
-    const session = await trainingSessionsRepository.findOneForUser(
+    const session = await trainingHistoryRepository.findOneForUser(
       userId,
       sessionId,
     );
@@ -88,13 +88,13 @@ export const trainingSessionsService = {
       throw new AppError(
         404,
         "not_found_or_not_yours",
-        "Training session was not found for this user",
+        "training history entry was not found for this user",
       );
     }
 
-    const exercises = await trainingSessionsRepository.findExercises(sessionId);
-    const sets = await trainingSessionsRepository.findSets(exercises.map((e) => e.id));
-    const setsByExerciseId = new Map<string, TrainingSessionSetRow[]>();
+    const exercises = await trainingHistoryRepository.findExercises(sessionId);
+    const sets = await trainingHistoryRepository.findSets(exercises.map((e) => e.id));
+    const setsByExerciseId = new Map<string, TrainingHistorySetRow[]>();
     for (const set of sets) {
       const existing = setsByExerciseId.get(set.session_exercise_id);
       if (existing) {

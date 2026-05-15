@@ -153,6 +153,172 @@ const MIGRATIONS: Migration[] = [
         ON training_plan_sets (plan_exercise_id);
     `,
   },
+  {
+    name: "007_create_training_sessions",
+    sql: `
+      CREATE TABLE IF NOT EXISTS training_sessions (
+        id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id        UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        plan_id        UUID        NOT NULL REFERENCES training_plans(id) ON DELETE RESTRICT,
+        status         TEXT        NOT NULL CHECK (status IN ('active', 'completed', 'cancelled')),
+        started_at     TIMESTAMPTZ NOT NULL,
+        ended_at       TIMESTAMPTZ,
+        duration_sec   INTEGER,
+        note           TEXT,
+        progress_type  TEXT,
+        progress_label TEXT,
+        created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+
+      CREATE INDEX IF NOT EXISTS training_sessions_user_started_idx
+        ON training_sessions (user_id, started_at DESC, id DESC);
+
+      CREATE INDEX IF NOT EXISTS training_sessions_user_status_started_idx
+        ON training_sessions (user_id, status, started_at DESC, id DESC);
+
+      CREATE INDEX IF NOT EXISTS training_sessions_user_plan_started_idx
+        ON training_sessions (user_id, plan_id, started_at DESC, id DESC);
+
+      CREATE INDEX IF NOT EXISTS training_sessions_plan_id_idx
+        ON training_sessions (plan_id);
+
+      CREATE OR REPLACE TRIGGER training_sessions_set_updated_at
+        BEFORE UPDATE ON training_sessions
+        FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+      CREATE TABLE IF NOT EXISTS training_session_exercises (
+        id          UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
+        session_id  UUID    NOT NULL REFERENCES training_sessions(id) ON DELETE CASCADE,
+        exercise_id UUID    NOT NULL REFERENCES exercises(id) ON DELETE RESTRICT,
+        position    INTEGER NOT NULL DEFAULT 0
+      );
+
+      CREATE INDEX IF NOT EXISTS training_session_exercises_session_idx
+        ON training_session_exercises (session_id, position, id);
+
+      CREATE TABLE IF NOT EXISTS training_session_sets (
+        id                   UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
+        session_exercise_id  UUID    NOT NULL REFERENCES training_session_exercises(id) ON DELETE CASCADE,
+        set_index            INTEGER NOT NULL,
+        planned_weight_kg    NUMERIC(8,2),
+        planned_reps         INTEGER,
+        planned_rir          INTEGER,
+        planned_tempo        TEXT,
+        actual_weight_kg     NUMERIC(8,2),
+        actual_reps          INTEGER,
+        actual_rir           INTEGER,
+        actual_tempo         TEXT,
+        completed            BOOLEAN NOT NULL DEFAULT false
+      );
+
+      CREATE INDEX IF NOT EXISTS training_session_sets_exercise_idx
+        ON training_session_sets (session_exercise_id, set_index, id);
+    `,
+  },
+  {
+    name: "008_seed_training_sessions",
+    sql: `
+      INSERT INTO users (id, email, password_hash, first_name, last_name)
+      VALUES (
+        'aaaaaaaa-0000-0000-0000-000000000001',
+        'seed.user@gym.app',
+        '$2a$10$4YB3nPqVv0mQ5sN8P6qzvujnA9n1vWxP0Q3hQ0PGLY8gQz6QW9N4m',
+        'Seed',
+        'User'
+      )
+      ON CONFLICT (id) DO NOTHING;
+
+      INSERT INTO training_plans (id, user_id, name, note, selected_days)
+      VALUES (
+        'f2000000-0000-4000-8000-000000000001',
+        'aaaaaaaa-0000-0000-0000-000000000001',
+        'Push/Pull/Legs',
+        'Seed plan for API demos',
+        ARRAY[1,3,5]
+      )
+      ON CONFLICT (id) DO NOTHING;
+
+      INSERT INTO training_sessions (
+        id, user_id, plan_id, status, started_at, ended_at, duration_sec, note, progress_type, progress_label
+      ) VALUES
+      (
+        'f1000000-0000-4000-8000-000000000001',
+        'aaaaaaaa-0000-0000-0000-000000000001',
+        'f2000000-0000-4000-8000-000000000001',
+        'completed',
+        '2026-05-14T18:05:00Z',
+        '2026-05-14T19:02:00Z',
+        3420,
+        'Felt great',
+        'weight_increase',
+        '+5 kg bench'
+      ),
+      (
+        'f1000000-0000-4000-8000-000000000002',
+        'aaaaaaaa-0000-0000-0000-000000000001',
+        'f2000000-0000-4000-8000-000000000001',
+        'active',
+        '2026-05-15T17:10:00Z',
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL
+      )
+      ON CONFLICT (id) DO NOTHING;
+
+      INSERT INTO training_session_exercises (id, session_id, exercise_id, position)
+      VALUES
+      (
+        'f3000000-0000-4000-8000-000000000001',
+        'f1000000-0000-4000-8000-000000000001',
+        'a1000000-0000-0000-0000-000000000001',
+        0
+      ),
+      (
+        'f3000000-0000-4000-8000-000000000002',
+        'f1000000-0000-4000-8000-000000000001',
+        'a1000000-0000-0000-0000-000000000002',
+        1
+      )
+      ON CONFLICT (id) DO NOTHING;
+
+      INSERT INTO training_session_sets (
+        id, session_exercise_id, set_index, planned_weight_kg, planned_reps, planned_rir, planned_tempo,
+        actual_weight_kg, actual_reps, actual_rir, actual_tempo, completed
+      ) VALUES
+      (
+        'f4000000-0000-4000-8000-000000000001',
+        'f3000000-0000-4000-8000-000000000001',
+        1,
+        80,
+        8,
+        2,
+        '3010',
+        82.5,
+        8,
+        1,
+        '3010',
+        true
+      ),
+      (
+        'f4000000-0000-4000-8000-000000000002',
+        'f3000000-0000-4000-8000-000000000001',
+        2,
+        80,
+        8,
+        2,
+        '3010',
+        80,
+        8,
+        2,
+        '3010',
+        true
+      )
+      ON CONFLICT (id) DO NOTHING;
+    `,
+  },
 ];
 
 const ADVISORY_LOCK_ID = 3_742_116_919;

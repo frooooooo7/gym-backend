@@ -20,7 +20,10 @@ export const requireAuth = (
 ): void => {
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) {
-    res.status(401).json({ error: "unauthorized" });
+    res.status(401).json({
+      error: "unauthorized",
+      message: "Missing or invalid Authorization header",
+    });
     return;
   }
 
@@ -30,6 +33,9 @@ export const requireAuth = (
     (req as AuthRequest).auth = payload;
     next();
   } catch {
-    res.status(401).json({ error: "invalid_token" });
+    res.status(401).json({
+      error: "invalid_token",
+      message: "JWT token is invalid or expired",
+    });
   }
 };

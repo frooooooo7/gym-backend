@@ -9,6 +9,7 @@ import { authRouter } from "./modules/auth/auth.routes.js";
 import { exercisesRouter } from "./modules/exercises/exercises.routes.js";
 import { ensureExerciseImagesDir } from "./modules/exercises/exercises.image-upload.js";
 import { healthRouter } from "./modules/health/health.routes.js";
+import { trainingSessionsRouter } from "./modules/training-sessions/training-sessions.routes.js";
 import { trainingPlansRouter } from "./modules/training-plans/training-plans.routes.js";
 
 export const createApp = () => {
@@ -39,18 +40,22 @@ export const createApp = () => {
   app.use(authRouter);
   app.use(exercisesRouter);
   app.use(trainingPlansRouter);
+  app.use(trainingSessionsRouter);
 
   app.use((_req, res) => {
-    res.status(404).json({ error: "not_found" });
+    res.status(404).json({ error: "not_found", message: "Route not found" });
   });
 
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     if (isAppError(err)) {
-      res.status(err.statusCode).json({ error: err.code });
+      res.status(err.statusCode).json({ error: err.code, message: err.message });
       return;
     }
     console.error(err);
-    res.status(500).json({ error: "internal_error" });
+    res.status(500).json({
+      error: "internal_error",
+      message: "Internal server error",
+    });
   });
 
   return app;

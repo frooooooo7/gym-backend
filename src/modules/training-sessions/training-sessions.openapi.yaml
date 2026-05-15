@@ -1,0 +1,281 @@
+openapi: 3.0.3
+info:
+  title: Gym Backend - Training Sessions API
+  version: 1.0.0
+servers:
+  - url: /
+paths:
+  /api/v1/training-sessions:
+    get:
+      summary: List training sessions timeline
+      tags: [TrainingSessions]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: cursor
+          schema:
+            type: string
+            nullable: true
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 50
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [completed, cancelled, active]
+        - in: query
+          name: planId
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: q
+          schema:
+            type: string
+        - in: query
+          name: from
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: to
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: List page
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingSessionsListResponse"
+        "304":
+          description: Not modified
+        "400":
+          description: Invalid query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+  /api/v1/training-sessions/{sessionId}:
+    get:
+      summary: Get training session details
+      tags: [TrainingSessions]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Session detail
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingSessionDetailResponse"
+        "304":
+          description: Not modified
+        "400":
+          description: Invalid params
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+        "404":
+          description: Missing session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+    PlanRef:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+    ProgressHighlight:
+      type: object
+      required: [type, label]
+      properties:
+        type:
+          type: string
+        label:
+          type: string
+      nullable: true
+    TrainingSessionListItem:
+      type: object
+      required:
+        - id
+        - startedAt
+        - endedAt
+        - durationSec
+        - status
+        - plan
+        - exercisesCount
+        - completedSetsCount
+        - hasNote
+        - progressHighlight
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+          nullable: true
+        durationSec:
+          type: integer
+        status:
+          type: string
+          enum: [completed, cancelled, active]
+        plan:
+          $ref: "#/components/schemas/PlanRef"
+        exercisesCount:
+          type: integer
+        completedSetsCount:
+          type: integer
+        hasNote:
+          type: boolean
+        progressHighlight:
+          $ref: "#/components/schemas/ProgressHighlight"
+        updatedAt:
+          type: string
+          format: date-time
+    TrainingSessionsListResponse:
+      type: object
+      required: [items, nextCursor, hasMore]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrainingSessionListItem"
+        nextCursor:
+          type: string
+          nullable: true
+        hasMore:
+          type: boolean
+    PlannedSet:
+      type: object
+      required: [weightKg, reps, rir, tempo]
+      properties:
+        weightKg:
+          type: number
+          nullable: true
+        reps:
+          type: integer
+          nullable: true
+        rir:
+          type: integer
+          nullable: true
+        tempo:
+          type: string
+          nullable: true
+    SessionSet:
+      type: object
+      required: [setIndex, planned, actual, completed]
+      properties:
+        setIndex:
+          type: integer
+        planned:
+          $ref: "#/components/schemas/PlannedSet"
+        actual:
+          $ref: "#/components/schemas/PlannedSet"
+        completed:
+          type: boolean
+    SessionExercise:
+      type: object
+      required: [exerciseId, exerciseName, sets]
+      properties:
+        exerciseId:
+          type: string
+          format: uuid
+        exerciseName:
+          type: string
+        sets:
+          type: array
+          items:
+            $ref: "#/components/schemas/SessionSet"
+    TrainingSessionDetailResponse:
+      type: object
+      required:
+        - id
+        - startedAt
+        - endedAt
+        - durationSec
+        - status
+        - plan
+        - note
+        - updatedAt
+        - exercises
+      properties:
+        id:
+          type: string
+          format: uuid
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+          nullable: true
+        durationSec:
+          type: integer
+        status:
+          type: string
+          enum: [completed, cancelled, active]
+        plan:
+          $ref: "#/components/schemas/PlanRef"
+        note:
+          type: string
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+        exercises:
+          type: array
+          items:
+            $ref: "#/components/schemas/SessionExercise"

@@ -124,7 +124,7 @@ export const trainingHistoryRepository = {
       params.push(`%${filters.q}%`);
       const searchParam = `$${params.length}`;
       where.push(`(
-        tp.name ILIKE ${searchParam}
+        ts.plan_name ILIKE ${searchParam}
         OR EXISTS (
           SELECT 1
           FROM training_session_exercises tse

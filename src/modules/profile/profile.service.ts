@@ -175,4 +175,17 @@ export const profileService = {
     const rows = await profileRepository.listRecentActivities(userId, limit);
     return rows.map(formatActivity);
   },
+
+  getUserActivities: async (
+    _viewerId: string,
+    targetUserId: string,
+    limit: number,
+  ) => {
+    const row = await profileRepository.findProfileById(targetUserId);
+    if (!row) {
+      throw new AppError(404, "user_not_found");
+    }
+    const rows = await profileRepository.listRecentActivities(targetUserId, limit);
+    return rows.map(formatActivity);
+  },
 };

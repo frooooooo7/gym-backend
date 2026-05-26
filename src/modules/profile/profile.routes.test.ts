@@ -227,6 +227,7 @@ describe("profile routes", () => {
 
   it("GET /users/:userId/activities returns user activities", async () => {
     whenSqlContains({
+      "FROM users": { rows: [{ ...profileRow, id: OTHER_USER_ID }] },
       "FROM training_sessions ts": { rows: [activityRow] },
     });
 
@@ -237,5 +238,99 @@ describe("profile routes", () => {
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(1);
     expect(res.body[0].id).toBe(SESSION_ID);
+  });
+
+  it("GET /users/:userId/activities returns 401 without auth", async () => {
+    const res = await request(app).get(
+      `/users/${OTHER_USER_ID}/activities?limit=3`,
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it("GET /users/:userId/activities returns 400 for invalid userId", async () => {
+    const res = await request(app)
+      .get("/users/not-a-uuid/activities?limit=3")
+      .set(authHeaders());
+    expect(res.status).toBe(400);
+  });
+
+  it("GET /users/:userId/activities returns 404 when user missing", async () => {
+    whenSqlContains({
+      "FROM users": { rows: [] },
+    });
+
+    const res = await request(app)
+      .get(`/users/${OTHER_USER_ID}/activities?limit=3`)
+      .set(authHeaders());
+
+    expect(res.status).toBe(404);
+    expect(res.body).toMatchObject({ error: "user_not_found" });
+  });
+
+  it("GET /profile/followers returns user list", async () => {
+    whenSqlContains({
+      "uf.following_id = $1": { rows: [followingRow] },
+    });
+
+    const res = await request(app)
+      .get("/profile/followers?limit=10&offset=0")
+      .set(authHeaders());
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([
+      {
+        id: OTHER_USER_ID,
+        firstName: "Anna",
+        lastName: "Nowak",
+        handle: "anna.nowak_d4e5f6",
+        avatarUrl: null,
+      },
+    ]);
+  });
+
+  it("GET /users/:userId/profile returns 401 without auth", async () => {
+    const res = await request(app).get(`/users/${OTHER_USER_ID}/profile`);
+    expect(res.status).toBe(401);
+  });
+
+  it("GET /users/:userId/profile returns 400 for invalid userId", async () => {
+    const res = await request(app)
+      .get("/users/not-a-uuid/profile")
+      .set(authHeaders());
+    expect(res.status).toBe(400);
+  });
+
+  it("GET /users/:userId/profile returns 404 when user missing", async () => {
+    whenSqlContains({
+      "FROM users": { rows: [] },
+    });
+
+    const res = await request(app)
+      .get(`/users/${OTHER_USER_ID}/profile`)
+      .set(authHeaders());
+
+    expect(res.status).toBe(404);
+    expect(res.body).toMatchObject({ error: "user_not_found" });
+  });
+
+  it("GET /profile/following returns 400 for invalid limit/offset values", async () => {
+    const res = await request(app)
+      .get("/profile/following?limit=-5")
+      .set(authHeaders());
+    expect(res.status).toBe(400);
+  });
+
+  it("GET /profile/followers returns 400 for invalid limit/offset values", async () => {
+    const res = await request(app)
+      .get("/profile/followers?limit=abc")
+      .set(authHeaders());
+    expect(res.status).toBe(400);
+  });
+
+  it("GET /users/search returns 400 for invalid limit query", async () => {
+    const res = await request(app)
+      .get("/users/search?limit=101")
+      .set(authHeaders());
+    expect(res.status).toBe(400);
   });
 });

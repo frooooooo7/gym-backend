@@ -21,6 +21,11 @@ profileRouter.get(
   requireAuth,
   profileController.getActivities,
 );
+profileRouter.get(
+  "/users/:userId/activities",
+  requireAuth,
+  profileController.getUserActivities,
+);
 profileRouter.get("/users/search", requireAuth, profileController.searchUsers);
 profileRouter.get(
   "/users/:userId/profile",

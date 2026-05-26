@@ -89,6 +89,26 @@ export const profileController = {
     res.status(200).json(items);
   }),
 
+  getUserActivities: asyncHandler(async (req: Request, res: Response) => {
+    const parsedParams = userIdParamsSchema.safeParse(req.params);
+    if (!parsedParams.success) {
+      res.status(400).json({
+        error: firstZodMessage(parsedParams.error.issues),
+      });
+      return;
+    }
+    const parsed = profileActivitiesQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ error: firstZodMessage(parsed.error.issues) });
+      return;
+    }
+    const items = await profileService.getRecentActivities(
+      parsedParams.data.userId,
+      parsed.data.limit,
+    );
+    res.status(200).json(items);
+  }),
+
   searchUsers: asyncHandler(async (req: Request, res: Response) => {
     const parsed = userSearchQuerySchema.safeParse(req.query);
     if (!parsed.success) {

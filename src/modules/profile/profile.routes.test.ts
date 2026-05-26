@@ -224,4 +224,18 @@ describe("profile routes", () => {
     expect(res.body).toHaveLength(1);
     expect(res.body[0].handle).toBe("anna.nowak_d4e5f6");
   });
+
+  it("GET /users/:userId/activities returns user activities", async () => {
+    whenSqlContains({
+      "FROM training_sessions ts": { rows: [activityRow] },
+    });
+
+    const res = await request(app)
+      .get(`/users/${OTHER_USER_ID}/activities?limit=3`)
+      .set(authHeaders());
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].id).toBe(SESSION_ID);
+  });
 });

@@ -1,4 +1,5 @@
 import { requirePool } from "../../db/require-pool.js";
+import { uniqueHandleFromId, handleBaseFromName } from "../profile/profile.handle.js";
 
 export interface UserRow {
   id: string;
@@ -19,12 +20,13 @@ export const authRepository = {
     lastName: string,
   ): Promise<UserRow | null> => {
     const pool = requirePool();
+    const handle = uniqueHandleFromId(handleBaseFromName(firstName, lastName), crypto.randomUUID());
     const { rows } = await pool.query(
-      `INSERT INTO users (email, password_hash, first_name, last_name)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO users (email, password_hash, first_name, last_name, handle)
+       VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (email) DO NOTHING
        RETURNING id, email, first_name, last_name`,
-      [normalizedEmail, passwordHash, firstName, lastName],
+      [normalizedEmail, passwordHash, firstName, lastName, handle],
     );
     if (rows.length === 0) {
       return null;

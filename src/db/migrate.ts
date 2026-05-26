@@ -233,6 +233,45 @@ const MIGRATIONS: Migration[] = [
         ADD COLUMN IF NOT EXISTS actual_tempo TEXT;
     `,
   },
+  {
+    name: "009_user_profile_and_follows",
+    sql: `
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS handle TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+
+      UPDATE users
+      SET handle = lower(
+        regexp_replace(
+          translate(
+            first_name || '.' || last_name,
+            'ąćęłńóśźżĄĆĘŁŃÓŚŹŻ',
+            'acelnoszzacelnoszz'
+          ),
+          '[^a-z0-9._]', '', 'g'
+        )
+      ) || '_' || left(replace(id::text, '-', ''), 6)
+      WHERE handle IS NULL;
+
+      ALTER TABLE users ALTER COLUMN handle SET NOT NULL;
+
+      CREATE UNIQUE INDEX IF NOT EXISTS users_handle_unique_idx ON users (handle);
+
+      CREATE TABLE IF NOT EXISTS user_follows (
+        follower_id  UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        following_id UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (follower_id, following_id),
+        CHECK (follower_id <> following_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS user_follows_follower_idx
+        ON user_follows (follower_id, created_at DESC);
+
+      CREATE INDEX IF NOT EXISTS user_follows_following_idx
+        ON user_follows (following_id, created_at DESC);
+    `,
+  },
 ];
 
 const ADVISORY_LOCK_ID = 3_742_116_919;

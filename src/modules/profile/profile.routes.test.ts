@@ -1,5 +1,7 @@
 import jwt from "jsonwebtoken";
 import request from "supertest";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { mockQuery, mockPool, mockGetPool } = vi.hoisted(() => {
@@ -17,7 +19,7 @@ vi.mock("../../db/pool.js", () => ({
 
 const { createApp } = await import("../../app.js");
 
-const JWT_SECRET = "dev-secret-change-in-production-min-32-chars!!";
+const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production-min-32-chars!!";
 const USER_ID = "aaaaaaaa-0000-0000-0000-000000000001";
 const OTHER_USER_ID = "bbbbbbbb-0000-0000-0000-000000000002";
 const USER_EMAIL = "tester@gym.com";
@@ -134,6 +136,96 @@ describe("profile routes", () => {
     expect(res.body.isOwnProfile).toBe(true);
   });
 
+  it("PATCH /profile/me updates firstName, lastName and handle", async () => {
+    whenSqlContains({
+      "lower(handle) = lower($1)": { rows: [] },
+      "UPDATE users": {
+        rows: [
+          {
+            ...profileRow,
+            first_name: "Janusz",
+            last_name: "Nowak",
+            handle: "janusz.nowak",
+          },
+        ],
+      },
+      following_count: { rows: [statsRow] },
+    });
+
+    const res = await request(app)
+      .patch("/profile/me")
+      .set(authHeaders())
+      .send({
+        firstName: "Janusz",
+        lastName: "Nowak",
+        handle: "Janusz.Nowak",
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      firstName: "Janusz",
+      lastName: "Nowak",
+      handle: "janusz.nowak",
+    });
+  });
+
+  it("PATCH /profile/me returns 409 when handle is taken", async () => {
+    whenSqlContains({
+      "lower(handle) = lower($1)": { rows: [{ "?column?": 1 }] },
+    });
+
+    const res = await request(app)
+      .patch("/profile/me")
+      .set(authHeaders())
+      .send({ handle: "taken.handle" });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe("handle_taken");
+  });
+
+  it("PATCH /profile/me returns 409 when unique handle index rejects update", async () => {
+    mockQuery.mockImplementation((sql: string) => {
+      const sqlStr = String(sql);
+      if (sqlStr.includes("lower(handle) = lower($1)")) {
+        return Promise.resolve({ rows: [], rowCount: 0 });
+      }
+      if (sqlStr.includes("UPDATE users")) {
+        const error = new Error("duplicate key value violates unique constraint");
+        (error as NodeJS.ErrnoException).code = "23505";
+        return Promise.reject(error);
+      }
+      return Promise.resolve({ rows: [], rowCount: 0 });
+    });
+
+    const res = await request(app)
+      .patch("/profile/me")
+      .set(authHeaders())
+      .send({ handle: "taken.handle" });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe("handle_taken");
+  });
+
+  it("PATCH /profile/me returns 400 for invalid handle", async () => {
+    const res = await request(app)
+      .patch("/profile/me")
+      .set(authHeaders())
+      .send({ handle: "ab" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("handle_invalid");
+  });
+
+  it("PATCH /profile/me returns 400 for empty body", async () => {
+    const res = await request(app)
+      .patch("/profile/me")
+      .set(authHeaders())
+      .send({});
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("empty_update");
+  });
+
   it("PATCH /profile/me returns 400 for bio over 120 chars", async () => {
     const res = await request(app)
       .patch("/profile/me")
@@ -142,6 +234,42 @@ describe("profile routes", () => {
 
     expect(res.status).toBe(400);
     expect(res.body.error).toBe("bio_too_long");
+  });
+
+  it("POST /profile/me/avatar returns 400 when avatar file is missing", async () => {
+    const res = await request(app)
+      .post("/profile/me/avatar")
+      .set(authHeaders());
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("missing_avatar");
+  });
+
+  it("POST /profile/me/avatar deletes uploaded file when user is missing", async () => {
+    whenSqlContains({
+      "FROM users": { rows: [] },
+    });
+
+    const avatarDir = path.join(process.cwd(), "uploads", "avatar-images");
+    const beforeFiles = await fs.readdir(avatarDir);
+    const beforePngCount = beforeFiles.filter((file) => file.endsWith(".png"))
+      .length;
+
+    const res = await request(app)
+      .post("/profile/me/avatar")
+      .set(authHeaders())
+      .attach("avatar", Buffer.from("fake image"), {
+        filename: "avatar.png",
+        contentType: "image/png",
+      });
+
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe("user_not_found");
+
+    const files = await fs.readdir(avatarDir);
+    expect(files.filter((file) => file.endsWith(".png"))).toHaveLength(
+      beforePngCount,
+    );
   });
 
   it("GET /users/:userId/profile returns other user profile", async () => {

@@ -8,6 +8,7 @@ import { env, isDev } from "./config/env.js";
 import { authRouter } from "./modules/auth/auth.routes.js";
 import { exercisesRouter } from "./modules/exercises/exercises.routes.js";
 import { ensureExerciseImagesDir } from "./modules/exercises/exercises.image-upload.js";
+import { ensureAvatarImagesDir } from "./modules/profile/profile.avatar-upload.js";
 import { healthRouter } from "./modules/health/health.routes.js";
 import { trainingHistoryRouter } from "./modules/training-history/training-history.routes.js";
 import { trainingPlansRouter } from "./modules/training-plans/training-plans.routes.js";
@@ -20,13 +21,15 @@ export const createApp = () => {
   app.disable("x-powered-by");
 
   ensureExerciseImagesDir();
-  app.use(
-    "/uploads/exercise-images",
-    express.static(path.join(process.cwd(), "uploads", "exercise-images")),
-  );
+  ensureAvatarImagesDir();
 
   app.use(compression());
-  app.use(helmet());
+  app.use(
+    helmet({
+      // Allow Flutter web / other app origins to load uploaded images.
+      crossOriginResourcePolicy: { policy: "cross-origin" },
+    }),
+  );
 
   // Dev: allow all origins. Prod: whitelist via CORS_ORIGIN env var (comma-separated).
   const corsOrigin = isDev
@@ -37,6 +40,15 @@ export const createApp = () => {
   app.use(cors({ origin: corsOrigin }));
 
   app.use(express.json({ limit: "1mb" }));
+
+  app.use(
+    "/uploads/exercise-images",
+    express.static(path.join(process.cwd(), "uploads", "exercise-images")),
+  );
+  app.use(
+    "/uploads/avatar-images",
+    express.static(path.join(process.cwd(), "uploads", "avatar-images")),
+  );
 
   app.use(healthRouter);
   app.use(authRouter);

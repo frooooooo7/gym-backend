@@ -12,7 +12,24 @@ export const profileController = {
 
   updateMe: asyncHandler(async (req: Request, res: Response) => {
     const userId = (req as AuthRequest).auth.sub;
-    const profile = await profileService.updateBio(userId, req.body.bio);
+    const profile = await profileService.updateProfile(userId, req.body);
+    res.status(200).json(profile);
+  }),
+
+  uploadAvatar: asyncHandler(async (req: Request, res: Response) => {
+    const userId = (req as AuthRequest).auth.sub;
+    const file = req.file;
+    if (!file) {
+      res.status(400).json({ error: "missing_avatar" });
+      return;
+    }
+
+    const publicPath = `/uploads/avatar-images/${file.filename}`;
+    const profile = await profileService.uploadAvatar(
+      userId,
+      publicPath,
+      file.path,
+    );
     res.status(200).json(profile);
   }),
 

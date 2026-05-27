@@ -1,5 +1,9 @@
 import { AppError } from "../../common/errors.js";
 import {
+  deleteAvatarFile,
+  deleteManagedAvatarFile,
+} from "./profile.avatar-upload.js";
+import {
   profileRepository,
   type FollowingUserRow,
   type ProfileActivityRow,
@@ -122,6 +126,12 @@ const formatActivity = (row: ProfileActivityRow) => ({
   commentCount: 0,
 });
 
+const isUniqueViolation = (error: unknown): boolean =>
+  typeof error === "object" &&
+  error !== null &&
+  "code" in error &&
+  (error as { code?: unknown }).code === "23505";
+
 export const profileService = {
   getOwnProfile: async (userId: string) => {
     const row = await profileRepository.findProfileById(userId);
@@ -141,11 +151,60 @@ export const profileService = {
     return formatProfile(row, stats, viewerId === targetUserId);
   },
 
-  updateBio: async (userId: string, bio: string | null) => {
-    const row = await profileRepository.updateBio(userId, bio);
+  updateProfile: async (userId: string, input: {
+    bio?: string | null;
+    firstName?: string;
+    lastName?: string;
+    handle?: string;
+  }) => {
+    if (input.handle !== undefined) {
+      const taken = await profileRepository.isHandleTaken(input.handle, userId);
+      if (taken) {
+        throw new AppError(409, "handle_taken");
+      }
+    }
+
+    let row: ProfileUserRow | undefined;
+    try {
+      row = await profileRepository.updateProfile(userId, input);
+    } catch (error) {
+      if (input.handle !== undefined && isUniqueViolation(error)) {
+        throw new AppError(409, "handle_taken");
+      }
+      throw error;
+    }
     if (!row) {
       throw new AppError(404, "user_not_found");
     }
+    const stats = await profileRepository.findStatsByUserId(userId);
+    return formatProfile(row, stats, true);
+  },
+
+  uploadAvatar: async (
+    userId: string,
+    publicPath: string,
+    savedDiskPath: string,
+  ) => {
+    const existing = await profileRepository.findProfileById(userId);
+    if (!existing) {
+      await deleteAvatarFile(savedDiskPath);
+      throw new AppError(404, "user_not_found");
+    }
+
+    let row: ProfileUserRow | undefined;
+    try {
+      row = await profileRepository.updateAvatarUrl(userId, publicPath);
+    } catch (error) {
+      await deleteAvatarFile(savedDiskPath);
+      throw error;
+    }
+    if (!row) {
+      await deleteAvatarFile(savedDiskPath);
+      throw new AppError(404, "user_not_found");
+    }
+
+    deleteManagedAvatarFile(existing.avatar_url);
+
     const stats = await profileRepository.findStatsByUserId(userId);
     return formatProfile(row, stats, true);
   },

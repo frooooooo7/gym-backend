@@ -1,11 +1,11 @@
 import type { Request, Response, NextFunction } from "express";
-import type { AnyZodObject } from "zod";
+import type { ZodType } from "zod";
 import { firstZodMessage } from "../common/schemas.js";
 
 export const validateRequest = (schemas: {
-  params?: AnyZodObject;
-  query?: AnyZodObject;
-  body?: AnyZodObject;
+  params?: ZodType;
+  query?: ZodType;
+  body?: ZodType;
 }) => {
   return (req: Request, res: Response, next: NextFunction) => {
     if (schemas.params) {
@@ -14,7 +14,7 @@ export const validateRequest = (schemas: {
         res.status(400).json({ error: firstZodMessage(parsed.error.issues) });
         return;
       }
-      req.params = parsed.data;
+      req.params = parsed.data as typeof req.params;
     }
     if (schemas.query) {
       const parsed = schemas.query.safeParse(req.query);

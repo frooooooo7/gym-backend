@@ -25,3 +25,14 @@ export const uniqueHandleFromId = (base: string, userId: string): string => {
   const trimmedBase = base.slice(0, maxBaseLength).replace(/[._]+$/, "") || "user";
   return `${trimmedBase}_${suffix}`;
 };
+
+export const normalizeHandle = (raw: string): string => {
+  let normalized = raw.trim().toLowerCase();
+  for (const [from, to] of Object.entries(POLISH_CHAR_MAP)) {
+    normalized = normalized.replaceAll(from, to);
+  }
+  return normalized.replace(/[^a-z0-9._]/g, "");
+};
+
+export const isValidHandle = (handle: string): boolean =>
+  handle.length >= 3 && handle.length <= 50 && /^[a-z0-9._]+$/.test(handle);

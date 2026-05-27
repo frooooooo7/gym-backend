@@ -58,14 +58,77 @@ export const profileRepository = {
     return rows[0] as ProfileStatsRow;
   },
 
-  updateBio: async (userId: string, bio: string | null): Promise<ProfileUserRow | undefined> => {
+  isHandleTaken: async (
+    handle: string,
+    excludeUserId: string,
+  ): Promise<boolean> => {
+    const pool = requirePool();
+    const { rows } = await pool.query(
+      `SELECT 1
+       FROM users
+       WHERE lower(handle) = lower($1) AND id <> $2
+       LIMIT 1`,
+      [handle, excludeUserId],
+    );
+    return rows.length > 0;
+  },
+
+  updateProfile: async (
+    userId: string,
+    data: {
+      bio?: string | null;
+      firstName?: string;
+      lastName?: string;
+      handle?: string;
+    },
+  ): Promise<ProfileUserRow | undefined> => {
+    const pool = requirePool();
+    const sets: string[] = [];
+    const values: unknown[] = [userId];
+    let index = 2;
+
+    if (data.bio !== undefined) {
+      sets.push(`bio = $${index++}`);
+      values.push(data.bio);
+    }
+    if (data.firstName !== undefined) {
+      sets.push(`first_name = $${index++}`);
+      values.push(data.firstName);
+    }
+    if (data.lastName !== undefined) {
+      sets.push(`last_name = $${index++}`);
+      values.push(data.lastName);
+    }
+    if (data.handle !== undefined) {
+      sets.push(`handle = $${index++}`);
+      values.push(data.handle);
+    }
+
+    if (sets.length === 0) {
+      return profileRepository.findProfileById(userId);
+    }
+
+    const { rows } = await pool.query(
+      `UPDATE users
+       SET ${sets.join(", ")}
+       WHERE id = $1
+       RETURNING id, first_name, last_name, handle, bio, avatar_url`,
+      values,
+    );
+    return rows[0] as ProfileUserRow | undefined;
+  },
+
+  updateAvatarUrl: async (
+    userId: string,
+    avatarUrl: string,
+  ): Promise<ProfileUserRow | undefined> => {
     const pool = requirePool();
     const { rows } = await pool.query(
       `UPDATE users
-       SET bio = $2
+       SET avatar_url = $2
        WHERE id = $1
        RETURNING id, first_name, last_name, handle, bio, avatar_url`,
-      [userId, bio],
+      [userId, avatarUrl],
     );
     return rows[0] as ProfileUserRow | undefined;
   },

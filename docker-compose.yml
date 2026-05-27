@@ -35,6 +35,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    volumes:
+      - uploads_data:/app/uploads
     healthcheck:
       test: ["CMD-SHELL", "wget --quiet --spider http://localhost:3000/health || exit 1"]
       interval: 10s
@@ -44,3 +46,4 @@ services:
 
 volumes:
   postgres_data:
+  uploads_data:

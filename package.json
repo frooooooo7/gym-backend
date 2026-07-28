@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "REST API for GYM (Strava-like + social) — Node.js + PostgreSQL/PostGIS",
+  "description": "REST API for GYM — strength training diary + social — Node.js + PostgreSQL",
   "engines": {
     "node": ">=20"
   },

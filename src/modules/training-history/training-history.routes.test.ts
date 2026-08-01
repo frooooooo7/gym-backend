@@ -41,6 +41,7 @@ const listRow = {
   plan_name: "Push/Pull/Legs",
   exercises_count: 6,
   completed_sets_count: 18,
+  total_volume_kg: 4280.5,
   note: "Felt great",
   progress_type: "weight_increase",
   progress_label: "+5 kg bench",
@@ -64,6 +65,8 @@ const detailExerciseRow = {
   session_id: SESSION_ID,
   exercise_id: EXERCISE_ID,
   exercise_name: "Bench Press",
+  exercise_muscles: ["chest", "triceps"],
+  exercise_image_url: "/uploads/exercise-images/bench.png",
   position: 0,
 };
 
@@ -80,6 +83,7 @@ const detailSetRow = {
   actual_rir: 1,
   actual_tempo: "3010",
   completed: true,
+  completed_at: new Date("2026-06-30T16:04:00.000Z"),
 };
 
 describe("training history routes", () => {
@@ -121,6 +125,7 @@ describe("training history routes", () => {
           plan: { id: PLAN_ID, name: "Push/Pull/Legs" },
           exercisesCount: 6,
           completedSetsCount: 18,
+          totalVolumeKg: 4280.5,
           hasNote: true,
           progressHighlight: {
             type: "weight_increase",
@@ -209,12 +214,15 @@ describe("training history routes", () => {
         {
           exerciseId: EXERCISE_ID,
           exerciseName: "Bench Press",
+          muscles: ["chest", "triceps"],
+          imageUrl: "/uploads/exercise-images/bench.png",
           sets: [
             {
               setIndex: 1,
               planned: { weightKg: 80, reps: 8, rir: 2, tempo: "3010" },
               actual: { weightKg: 82.5, reps: 8, rir: 1, tempo: "3010" },
               completed: true,
+              completedAt: "2026-06-30T16:04:00.000Z",
             },
           ],
         },

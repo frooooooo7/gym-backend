@@ -153,6 +153,7 @@ components:
         - plan
         - exercisesCount
         - completedSetsCount
+        - totalVolumeKg
         - hasNote
         - progressHighlight
         - updatedAt
@@ -178,6 +179,13 @@ components:
           type: integer
         completedSetsCount:
           type: integer
+        totalVolumeKg:
+          type: number
+          format: double
+          description: >-
+            Suma ciężar × powtórzenia po ukończonych seriach sesji.
+            Serie bez liczbowego ciężaru lub powtórzeń są pomijane.
+          example: 4280
         hasNote:
           type: boolean
         progressHighlight:
@@ -216,7 +224,7 @@ components:
           nullable: true
     SessionSet:
       type: object
-      required: [setIndex, planned, actual, completed]
+      required: [setIndex, planned, actual, completed, completedAt]
       properties:
         setIndex:
           type: integer
@@ -226,15 +234,29 @@ components:
           $ref: "#/components/schemas/PlannedSet"
         completed:
           type: boolean
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Moment odhaczenia serii; null dla serii nieukończonych.
     SessionExercise:
       type: object
-      required: [exerciseId, exerciseName, sets]
+      required: [exerciseId, exerciseName, muscles, imageUrl, sets]
       properties:
         exerciseId:
           type: string
           format: uuid
         exerciseName:
           type: string
+        muscles:
+          type: array
+          description: Snapshot grup mięśniowych ćwiczenia z chwili wykonania sesji.
+          items:
+            type: string
+        imageUrl:
+          type: string
+          nullable: true
+          description: Ścieżka względna uploadu lub absolutny URL obrazka ćwiczenia.
         sets:
           type: array
           items:

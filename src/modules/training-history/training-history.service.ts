@@ -23,6 +23,7 @@ const mapSet = (set: TrainingHistorySetRow) => ({
     tempo: set.actual_tempo,
   },
   completed: set.completed,
+  completedAt: set.completed_at?.toISOString() ?? null,
 });
 
 export interface TrainingHistoryListInput {
@@ -57,6 +58,7 @@ export const trainingHistoryService = {
       },
       exercisesCount: row.exercises_count,
       completedSetsCount: row.completed_sets_count,
+      totalVolumeKg: toNumber(row.total_volume_kg) ?? 0,
       hasNote: !!row.note?.trim(),
       progressHighlight:
         row.progress_type && row.progress_label
@@ -119,6 +121,8 @@ export const trainingHistoryService = {
       exercises: exercises.map((exercise) => ({
         exerciseId: exercise.exercise_id,
         exerciseName: exercise.exercise_name,
+        muscles: exercise.exercise_muscles ?? [],
+        imageUrl: exercise.exercise_image_url,
         sets: (setsByExerciseId.get(exercise.id) ?? []).map(mapSet),
       })),
     };

@@ -26,7 +26,20 @@ export const createApp = () => {
   );
 
   app.use(compression());
-  app.use(helmet());
+  // CORS (below) is the actual cross-origin gatekeeper for this API — Helmet's
+  // default same-origin CORP would silently block browsers from reading
+  // responses across origins even when CORS allows the request (e.g. Flutter
+  // web's dev server port vs this API's port), so relax it to cross-origin.
+  // HSTS is also disabled in dev: it has no TLS listener to redirect to, and
+  // once a browser receives it for `localhost` it force-upgrades ALL local
+  // ports to https for up to a year, breaking every plain-http dev server on
+  // that host until the browser's HSTS state for localhost is cleared.
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: { policy: "cross-origin" },
+      hsts: isDev ? false : undefined,
+    }),
+  );
 
   // Dev: allow all origins. Prod: whitelist via CORS_ORIGIN env var (comma-separated).
   const corsOrigin = isDev

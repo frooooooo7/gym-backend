@@ -26,6 +26,7 @@ export interface TrainingHistoryDetailRow {
   plan_id: string;
   plan_name: string;
   note: string | null;
+  shared_to_profile: boolean;
   updated_at: Date;
 }
 
@@ -194,6 +195,7 @@ export const trainingHistoryRepository = {
         ts.plan_id,
         ts.plan_name,
         ts.note,
+        ts.shared_to_profile,
         ts.updated_at
       FROM training_sessions ts
       WHERE ts.id = $1::uuid AND ts.user_id = $2

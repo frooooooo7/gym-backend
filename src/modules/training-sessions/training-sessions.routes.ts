@@ -24,3 +24,8 @@ trainingSessionsRouter.get(
   requireAuth,
   trainingSessionsController.history,
 );
+trainingSessionsRouter.patch(
+  "/training-sessions/:id/shared-to-profile",
+  requireAuth,
+  trainingSessionsController.setSharedToProfile,
+);

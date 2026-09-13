@@ -117,6 +117,7 @@ export const trainingHistoryService = {
         name: session.plan_name,
       },
       note: session.note,
+      sharedToProfile: session.shared_to_profile,
       updatedAt: session.updated_at.toISOString(),
       exercises: exercises.map((exercise) => ({
         exerciseId: exercise.exercise_id,

@@ -398,6 +398,38 @@ export const trainingSessionsRepository = {
     }
   },
 
+  setSharedToProfile: async (
+    userId: string,
+    sessionId: string,
+    sharedToProfile: boolean,
+  ): Promise<TrainingSessionRow | null> => {
+    const pool = requirePool();
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const { rowCount } = await client.query(
+        `UPDATE training_sessions
+         SET shared_to_profile = $1
+         WHERE id = $2 AND user_id = $3`,
+        [sharedToProfile, sessionId, userId],
+      );
+      if (!rowCount) {
+        await client.query("ROLLBACK");
+        return null;
+      }
+      const [row] = await loadSessions(client, userId, "AND id = $2", [
+        sessionId,
+      ]);
+      await client.query("COMMIT");
+      return row ?? null;
+    } catch (e) {
+      await client.query("ROLLBACK");
+      throw e;
+    } finally {
+      client.release();
+    }
+  },
+
   history: async (userId: string): Promise<TrainingSessionRow[]> => {
     const pool = requirePool();
     const client = await pool.connect();

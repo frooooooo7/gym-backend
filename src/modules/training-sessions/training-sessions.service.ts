@@ -78,4 +78,18 @@ export const trainingSessionsService = {
     const rows = await trainingSessionsRepository.history(userId);
     return rows.map(formatSession);
   },
+
+  setSharedToProfile: async (
+    userId: string,
+    sessionId: string,
+    sharedToProfile: boolean,
+  ) => {
+    const row = await trainingSessionsRepository.setSharedToProfile(
+      userId,
+      sessionId,
+      sharedToProfile,
+    );
+    if (!row) throw new AppError(404, "not_found_or_not_yours");
+    return formatSession(row);
+  },
 };

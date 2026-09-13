@@ -57,6 +57,7 @@ const detailSessionRow = {
   plan_id: PLAN_ID,
   plan_name: "Push/Pull/Legs",
   note: "Felt great",
+  shared_to_profile: false,
   updated_at: new Date("2026-05-14T19:05:00Z"),
 };
 
@@ -210,6 +211,7 @@ describe("training history routes", () => {
       status: "completed",
       plan: { id: PLAN_ID, name: "Push/Pull/Legs" },
       note: "Felt great",
+      sharedToProfile: false,
       exercises: [
         {
           exerciseId: EXERCISE_ID,

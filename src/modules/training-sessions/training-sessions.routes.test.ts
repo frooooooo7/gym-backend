@@ -279,6 +279,43 @@ describe("training sessions routes", () => {
     });
   });
 
+  it("PATCH /training-sessions/:id/shared-to-profile updates only the flag", async () => {
+    whenSqlContains({
+      "SET shared_to_profile = $1": { rowCount: 1 },
+      "FROM training_sessions": {
+        rows: [{ ...sessionRow, shared_to_profile: true }],
+      },
+      "FROM training_session_exercises": { rows: [sessionExerciseRow] },
+      "FROM training_session_sets": { rows: [sessionSetRow] },
+    });
+
+    const res = await request(app)
+      .patch(`/training-sessions/${SESSION_ID}/shared-to-profile`)
+      .set(authHeaders())
+      .send({ sharedToProfile: true });
+
+    expect(res.status).toBe(200);
+    expect(res.body.sharedToProfile).toBe(true);
+    const updateCall = mockQuery.mock.calls.find((call) =>
+      String(call[0]).includes("SET shared_to_profile = $1"),
+    );
+    expect(updateCall?.[1]).toEqual([true, SESSION_ID, USER_ID]);
+  });
+
+  it("PATCH /training-sessions/:id/shared-to-profile returns 404 when missing", async () => {
+    whenSqlContains({
+      "SET shared_to_profile = $1": { rowCount: 0 },
+    });
+
+    const res = await request(app)
+      .patch(`/training-sessions/${SESSION_ID}/shared-to-profile`)
+      .set(authHeaders())
+      .send({ sharedToProfile: true });
+
+    expect(res.status).toBe(404);
+    expect(res.body).toMatchObject({ error: "not_found_or_not_yours" });
+  });
+
   it("PUT /training-sessions/:id returns 404 when session is not owned", async () => {
     whenSqlContains({
       "UPDATE training_sessions": { rowCount: 0 },

@@ -57,3 +57,11 @@ export const trainingSessionBodySchema = z.object({
 export type TrainingSessionBodyInput = z.infer<
   typeof trainingSessionBodySchema
 >;
+
+export const sharedToProfileBodySchema = z.object({
+  sharedToProfile: z.boolean(),
+});
+
+export type SharedToProfileBodyInput = z.infer<
+  typeof sharedToProfileBodySchema
+>;

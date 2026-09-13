@@ -22,17 +22,22 @@ const safeUnlink = async (absPath: string): Promise<void> => {
   }
 };
 
-const formatExercise = (row: ExerciseRow, userId?: string) => ({
-  id: row.id,
-  name: row.name,
-  muscles: row.muscles,
-  category: row.category,
-  description: row.description,
-  imageUrl: row.image_url,
-  createdAt: row.created_at,
-  isFavourite: row.is_favourite,
-  isMine: userId ? row.created_by === userId : false,
-});
+const formatExercise = (row: ExerciseRow, userId?: string) => {
+  const isMine = userId ? row.created_by === userId : false;
+  return {
+    id: row.id,
+    name: row.name,
+    muscles: row.muscles,
+    category: row.category,
+    description: row.description,
+    imageUrl: row.image_url,
+    createdAt: row.created_at,
+    isFavourite: row.is_favourite,
+    isMine,
+    // clientId innych użytkowników nie jest nikomu potrzebny — nie ujawniamy go.
+    clientId: isMine ? (row.client_id ?? null) : null,
+  };
+};
 
 export type ExercisesRepositoryDeps = {
   list: (userId: string, query: ListQueryInput) => Promise<ExerciseRow[]>;

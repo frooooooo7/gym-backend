@@ -127,11 +127,19 @@ const replaceChildren = async (
   }
 };
 
-const assertExercisesVisible = async (
+/**
+ * Sesja to migawka treningu: ćwiczenie albo plan usunięte, zanim klient
+ * offline zdążył ją wysłać, nie może blokować zapisu na zawsze. Niewidoczne
+ * referencje zapisujemy jako NULL — tak samo, jak zrobiłby to
+ * `ON DELETE SET NULL`, gdyby sesja dotarła wcześniej. Nazwa ćwiczenia,
+ * mięśnie i nazwa planu zostają w snapshotcie, a cudzych zasobów nadal nie
+ * da się podpiąć.
+ */
+const withVisibleReferences = async (
   client: PoolClient,
   userId: string,
   body: TrainingSessionBodyInput,
-) => {
+): Promise<TrainingSessionBodyInput> => {
   const ids = [
     ...new Set(
       body.exercises
@@ -139,29 +147,37 @@ const assertExercisesVisible = async (
         .filter((id): id is string => !!id),
     ),
   ];
-  if (ids.length === 0) return;
 
-  const { rows } = await client.query(
-    `SELECT id FROM exercises
-     WHERE id = ANY($1::uuid[]) AND (is_system = true OR created_by = $2)`,
-    [ids, userId],
-  );
-  if (rows.length !== ids.length) {
-    throw new AppError(400, "exercise_not_found");
+  let visibleIds = new Set<string>();
+  if (ids.length > 0) {
+    const { rows } = await client.query(
+      `SELECT id FROM exercises
+       WHERE id = ANY($1::uuid[]) AND (is_system = true OR created_by = $2)`,
+      [ids, userId],
+    );
+    visibleIds = new Set(rows.map((row) => row.id as string));
   }
-};
 
-const ensurePlanOwned = async (
-  client: PoolClient,
-  userId: string,
-  planId: string | null,
-) => {
-  if (!planId) return;
-  const { rowCount } = await client.query(
-    "SELECT 1 FROM training_plans WHERE id = $1 AND user_id = $2",
-    [planId, userId],
-  );
-  if (!rowCount) throw new AppError(404, "plan_not_found_or_not_yours");
+  let planId = body.planId ?? null;
+  if (planId) {
+    const { rowCount } = await client.query(
+      "SELECT 1 FROM training_plans WHERE id = $1 AND user_id = $2",
+      [planId, userId],
+    );
+    if (!rowCount) planId = null;
+  }
+
+  return {
+    ...body,
+    planId,
+    exercises: body.exercises.map((exercise) => ({
+      ...exercise,
+      exerciseId:
+        exercise.exerciseId && visibleIds.has(exercise.exerciseId)
+          ? exercise.exerciseId
+          : null,
+    })),
+  };
 };
 
 const ensureNoOtherActiveSession = async (
@@ -281,8 +297,7 @@ export const trainingSessionsRepository = {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      await assertExercisesVisible(client, userId, body);
-      await ensurePlanOwned(client, userId, body.planId ?? null);
+      body = await withVisibleReferences(client, userId, body);
       await ensureNoOtherActiveSession(client, userId, body);
       const { rows } = await client.query(
         `INSERT INTO training_sessions
@@ -340,8 +355,7 @@ export const trainingSessionsRepository = {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      await assertExercisesVisible(client, userId, body);
-      await ensurePlanOwned(client, userId, body.planId ?? null);
+      body = await withVisibleReferences(client, userId, body);
       await ensureNoOtherActiveSession(client, userId, body, sessionId);
       const { rowCount } = await client.query(
         `UPDATE training_sessions

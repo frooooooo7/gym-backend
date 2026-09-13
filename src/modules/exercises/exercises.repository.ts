@@ -1,3 +1,4 @@
+import { AppError } from "../../common/errors.js";
 import { requirePool } from "../../db/require-pool.js";
 import type { ListQueryInput } from "./exercises.schemas.js";
 
@@ -11,7 +12,15 @@ export interface ExerciseRow {
   created_by: string | null;
   created_at: Date;
   is_favourite: boolean;
+  /** Identyfikator nadany offline przez klienta — pozwala mu sparować wiersz po zgubionej odpowiedzi. */
+  client_id?: string | null;
 }
+
+const isForeignKeyViolation = (error: unknown) =>
+  typeof error === "object" &&
+  error !== null &&
+  "code" in error &&
+  error.code === "23503";
 
 export type ExerciseRowSansFavourite = Omit<ExerciseRow, "is_favourite">;
 
@@ -69,6 +78,7 @@ export const exercisesRepository = {
         e.image_url,
         e.created_by,
         e.created_at,
+        e.client_id,
         (ufe.user_id IS NOT NULL) AS is_favourite
       FROM exercises e
       LEFT JOIN user_favourite_exercises ufe
@@ -107,7 +117,7 @@ export const exercisesRepository = {
            muscles = EXCLUDED.muscles,
            category = EXCLUDED.category,
            description = EXCLUDED.description
-         RETURNING id, name, muscles, category, description, image_url, created_by, created_at,
+         RETURNING id, name, muscles, category, description, image_url, created_by, created_at, client_id,
            (xmax = 0) AS inserted`,
         [name, muscles, category, userId, description, clientId],
       );
@@ -138,7 +148,7 @@ export const exercisesRepository = {
       `UPDATE exercises
        SET name = $1, muscles = $2, category = $3, description = $4
        WHERE id = $5 AND created_by = $6
-       RETURNING id, name, muscles, category, description, image_url, created_by, created_at`,
+       RETURNING id, name, muscles, category, description, image_url, created_by, created_at, client_id`,
       [name, muscles, category, description, exerciseId, userId],
     );
     if (rows.length === 0) {
@@ -152,11 +162,18 @@ export const exercisesRepository = {
     userId: string,
   ): Promise<boolean> => {
     const pool = requirePool();
-    const { rowCount } = await pool.query(
-      "DELETE FROM exercises WHERE id = $1 AND created_by = $2",
-      [exerciseId, userId],
-    );
-    return !!rowCount;
+    try {
+      const { rowCount } = await pool.query(
+        "DELETE FROM exercises WHERE id = $1 AND created_by = $2",
+        [exerciseId, userId],
+      );
+      return !!rowCount;
+    } catch (e) {
+      // training_plan_exercises.exercise_id ma ON DELETE RESTRICT — to nie jest
+      // błąd serwera, tylko konflikt, który klient może pokazać użytkownikowi.
+      if (isForeignKeyViolation(e)) throw new AppError(409, "exercise_in_use");
+      throw e;
+    }
   },
 
   exerciseVisibleToUser: async (
@@ -199,7 +216,7 @@ export const exercisesRepository = {
     const { rows } = await pool.query(
       `UPDATE exercises SET image_url = $3
        WHERE id = $1 AND created_by = $2
-       RETURNING id, name, muscles, category, description, image_url, created_by, created_at`,
+       RETURNING id, name, muscles, category, description, image_url, created_by, created_at, client_id`,
       [exerciseId, userId, imageUrl],
     );
     if (rows.length === 0) {

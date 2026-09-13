@@ -119,7 +119,24 @@ describe("GET /exercises", () => {
       imageUrl: null,
       isFavourite: true,
       isMine: false,
+      clientId: null,
     });
+  });
+
+  it("exposes clientId only for the caller's own exercises", async () => {
+    const clientId = "550e8400-e29b-41d4-a716-446655440099";
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        makeExerciseRow({ id: "own", created_by: USER_ID, client_id: clientId }),
+        makeExerciseRow({ id: "system", client_id: clientId }),
+      ],
+    });
+
+    const res = await request(app).get("/exercises").set(authHeaders());
+
+    expect(res.status).toBe(200);
+    expect(res.body[0].clientId).toBe(clientId);
+    expect(res.body[1].clientId).toBeNull();
   });
 
   it("sets isMine=true when created_by matches the authenticated user", async () => {
@@ -379,6 +396,21 @@ describe("DELETE /exercises/:id", () => {
 
     expect(res.status).toBe(404);
     expect(res.body).toMatchObject({ error: "not_found_or_not_yours" });
+  });
+
+  it("returns 409 exercise_in_use when a training plan still references the exercise", async () => {
+    mockQuery.mockRejectedValueOnce(
+      Object.assign(new Error("violates foreign key constraint"), {
+        code: "23503",
+      }),
+    );
+
+    const res = await request(app)
+      .delete(`/exercises/${EXERCISE_ID}`)
+      .set(authHeaders());
+
+    expect(res.status).toBe(409);
+    expect(res.body).toMatchObject({ error: "exercise_in_use" });
   });
 
   it("returns 204 and empty body on successful delete", async () => {

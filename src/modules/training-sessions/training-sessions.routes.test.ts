@@ -232,9 +232,20 @@ describe("training sessions routes", () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
-  it("POST /training-sessions returns 400 when exercise is not visible to user", async () => {
+  it("POST /training-sessions keeps the snapshot but drops links to exercises no longer visible", async () => {
     whenSqlContains({
       "SELECT id FROM exercises": { rows: [] },
+      "INSERT INTO training_sessions": {
+        rows: [{ id: SESSION_ID, inserted: true }],
+      },
+      "DELETE FROM training_session_exercises": { rows: [] },
+      "INSERT INTO training_session_exercises": {
+        rows: [{ id: SESSION_EXERCISE_ID }],
+      },
+      "INSERT INTO training_session_sets": { rows: [] },
+      "FROM training_sessions": { rows: [sessionRow] },
+      "FROM training_session_exercises": { rows: [sessionExerciseRow] },
+      "FROM training_session_sets": { rows: [sessionSetRow] },
     });
 
     const res = await request(app)
@@ -250,14 +261,42 @@ describe("training sessions routes", () => {
         ],
       });
 
-    expect(res.status).toBe(400);
-    expect(res.body).toMatchObject({ error: "exercise_not_found" });
-    expect(
-      mockQuery.mock.calls.some((call) =>
-        String(call[0]).includes("INSERT INTO training_sessions"),
-      ),
-    ).toBe(false);
+    expect(res.status).toBe(201);
+    const exerciseInsert = mockQuery.mock.calls.find((call) =>
+      String(call[0]).includes("INSERT INTO training_session_exercises"),
+    );
+    expect(exerciseInsert?.[1]?.[2]).toBeNull();
+    expect(exerciseInsert?.[1]?.[4]).toBe("Bench");
     expect(mockRelease).toHaveBeenCalledOnce();
+  });
+
+  it("POST /training-sessions drops the plan link when the plan no longer exists", async () => {
+    whenSqlContains({
+      "FROM training_plans": { rows: [], rowCount: 0 },
+      "INSERT INTO training_sessions": {
+        rows: [{ id: SESSION_ID, inserted: true }],
+      },
+      "DELETE FROM training_session_exercises": { rows: [] },
+      "INSERT INTO training_session_exercises": {
+        rows: [{ id: SESSION_EXERCISE_ID }],
+      },
+      "INSERT INTO training_session_sets": { rows: [] },
+      "FROM training_sessions": { rows: [sessionRow] },
+      "FROM training_session_exercises": { rows: [sessionExerciseRow] },
+      "FROM training_session_sets": { rows: [sessionSetRow] },
+    });
+
+    const res = await request(app)
+      .post("/training-sessions")
+      .set(authHeaders())
+      .send({ ...validBody, planId: "a2000000-0000-0000-0000-000000000001" });
+
+    expect(res.status).toBe(201);
+    const sessionInsert = mockQuery.mock.calls.find((call) =>
+      String(call[0]).includes("INSERT INTO training_sessions"),
+    );
+    expect(sessionInsert?.[1]?.[2]).toBeNull();
+    expect(sessionInsert?.[1]?.[4]).toBe("FBW");
   });
 
   it("GET /training-sessions/history returns completed sessions", async () => {

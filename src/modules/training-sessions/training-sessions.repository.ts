@@ -45,6 +45,7 @@ export interface TrainingSessionRow {
   note: string | null;
   started_at: Date;
   finished_at: Date | null;
+  shared_to_profile: boolean;
   created_at: Date;
   updated_at: Date;
   exercises: TrainingSessionExerciseRow[];
@@ -203,7 +204,8 @@ const loadSessions = async (
 ): Promise<TrainingSessionRow[]> => {
   const { rows: sessionRows } = await client.query(
     `SELECT id, client_id, user_id, plan_id, plan_client_id, plan_name, status,
-            note, started_at, finished_at, created_at, updated_at
+            note, started_at, finished_at, shared_to_profile, created_at,
+            updated_at
      FROM training_sessions
      WHERE user_id = $1 ${whereSql}
      ORDER BY started_at DESC, created_at DESC`,
@@ -285,8 +287,8 @@ export const trainingSessionsRepository = {
       const { rows } = await client.query(
         `INSERT INTO training_sessions
           (user_id, client_id, plan_id, plan_client_id, plan_name, status,
-           note, started_at, finished_at)
-         VALUES ($1, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $8, $9)
+           note, started_at, finished_at, shared_to_profile)
+         VALUES ($1, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $8, $9, $10)
          ON CONFLICT (user_id, client_id) WHERE client_id IS NOT NULL
          DO UPDATE SET
            plan_id = EXCLUDED.plan_id,
@@ -295,7 +297,8 @@ export const trainingSessionsRepository = {
            status = EXCLUDED.status,
            note = EXCLUDED.note,
            started_at = EXCLUDED.started_at,
-           finished_at = EXCLUDED.finished_at
+           finished_at = EXCLUDED.finished_at,
+           shared_to_profile = EXCLUDED.shared_to_profile
          RETURNING id, (xmax = 0) AS inserted`,
         [
           userId,
@@ -307,6 +310,7 @@ export const trainingSessionsRepository = {
           body.note,
           body.startedAt,
           body.finishedAt ?? null,
+          body.sharedToProfile,
         ],
       );
       const sessionId = rows[0].id as string;
@@ -342,8 +346,9 @@ export const trainingSessionsRepository = {
       const { rowCount } = await client.query(
         `UPDATE training_sessions
          SET plan_id = $1::uuid, plan_client_id = $2::uuid, plan_name = $3,
-             status = $4, note = $5, started_at = $6, finished_at = $7
-         WHERE id = $8 AND user_id = $9`,
+             status = $4, note = $5, started_at = $6, finished_at = $7,
+             shared_to_profile = $8
+         WHERE id = $9 AND user_id = $10`,
         [
           body.planId ?? null,
           body.planClientId ?? null,
@@ -352,6 +357,7 @@ export const trainingSessionsRepository = {
           body.note,
           body.startedAt,
           body.finishedAt ?? null,
+          body.sharedToProfile,
           sessionId,
           userId,
         ],

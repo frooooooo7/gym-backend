@@ -211,6 +211,19 @@ describe("profile routes", () => {
     ]);
   });
 
+  it("GET /profile/activities only lists sessions shared to profile", async () => {
+    whenSqlContains({
+      "FROM training_sessions ts": { rows: [activityRow] },
+    });
+
+    await request(app).get("/profile/activities?limit=5").set(authHeaders());
+
+    const activitiesSql = mockQuery.mock.calls
+      .map((call) => String(call[0]))
+      .find((sql) => sql.includes("FROM training_sessions ts"));
+    expect(activitiesSql).toContain("ts.shared_to_profile = true");
+  });
+
   it("GET /users/search returns matching users", async () => {
     whenSqlContains({
       "lower(handle) LIKE $2": { rows: [followingRow] },

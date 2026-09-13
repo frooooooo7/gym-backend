@@ -15,6 +15,7 @@ const formatSession = (row: TrainingSessionRow) => ({
   note: row.note,
   startedAt: row.started_at,
   finishedAt: row.finished_at,
+  sharedToProfile: row.shared_to_profile,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
   exercises: row.exercises.map((exercise) => ({

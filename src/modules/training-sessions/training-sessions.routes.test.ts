@@ -85,6 +85,7 @@ const sessionRow = {
   note: null,
   started_at: new Date(validBody.startedAt),
   finished_at: new Date(validBody.finishedAt),
+  shared_to_profile: true,
   created_at: new Date("2026-05-12T10:00:00Z"),
   updated_at: new Date("2026-05-12T11:00:00Z"),
 };
@@ -168,14 +169,19 @@ describe("training sessions routes", () => {
     const res = await request(app)
       .post("/training-sessions")
       .set(authHeaders())
-      .send(validBody);
+      .send({ ...validBody, sharedToProfile: true });
 
     expect(res.status).toBe(201);
+    const insertCall = mockQuery.mock.calls.find((call) =>
+      String(call[0]).includes("INSERT INTO training_sessions"),
+    );
+    expect(insertCall?.[1]).toContain(true);
     expect(res.body).toMatchObject({
       id: SESSION_ID,
       clientId: CLIENT_ID,
       planName: "FBW",
       status: "completed",
+      sharedToProfile: true,
       exercises: [
         {
           exerciseName: "Bench",
@@ -186,6 +192,34 @@ describe("training sessions routes", () => {
       ],
     });
     expect(mockRelease).toHaveBeenCalledOnce();
+  });
+
+  it("POST /training-sessions defaults sharedToProfile to false", async () => {
+    whenSqlContains({
+      "INSERT INTO training_sessions": {
+        rows: [{ id: SESSION_ID, inserted: true }],
+      },
+      "INSERT INTO training_session_exercises": {
+        rows: [{ id: SESSION_EXERCISE_ID }],
+      },
+      "FROM training_sessions": {
+        rows: [{ ...sessionRow, shared_to_profile: false }],
+      },
+      "FROM training_session_exercises": { rows: [sessionExerciseRow] },
+      "FROM training_session_sets": { rows: [sessionSetRow] },
+    });
+
+    const res = await request(app)
+      .post("/training-sessions")
+      .set(authHeaders())
+      .send(validBody);
+
+    expect(res.status).toBe(201);
+    const insertCall = mockQuery.mock.calls.find((call) =>
+      String(call[0]).includes("INSERT INTO training_sessions"),
+    );
+    expect(insertCall?.[1]?.at(-1)).toBe(false);
+    expect(res.body.sharedToProfile).toBe(false);
   });
 
   it("POST /training-sessions returns 400 when startedAt is null", async () => {

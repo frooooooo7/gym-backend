@@ -272,6 +272,23 @@ const MIGRATIONS: Migration[] = [
         ON user_follows (following_id, created_at DESC);
     `,
   },
+  {
+    name: "010_training_sessions_shared_to_profile",
+    sql: `
+      ALTER TABLE training_sessions
+        ADD COLUMN IF NOT EXISTS shared_to_profile BOOLEAN NOT NULL DEFAULT false;
+
+      -- Sesje ukończone przed wprowadzeniem flagi były widoczne na profilu
+      -- bezwarunkowo — zachowujemy to, żeby istniejące profile nie opustoszały.
+      UPDATE training_sessions
+      SET shared_to_profile = true
+      WHERE status = 'completed';
+
+      CREATE INDEX IF NOT EXISTS training_sessions_user_shared_idx
+        ON training_sessions (user_id, started_at DESC)
+        WHERE status = 'completed' AND shared_to_profile = true;
+    `,
+  },
 ];
 
 const ADVISORY_LOCK_ID = 3_742_116_919;

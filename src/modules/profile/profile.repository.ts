@@ -167,7 +167,9 @@ export const profileRepository = {
          JOIN training_session_sets tss ON tss.session_exercise_id = tse.id
          WHERE tse.session_id = ts.id AND tss.completed = true
        ) vc ON true
-       WHERE ts.user_id = $1 AND ts.status = 'completed'
+       WHERE ts.user_id = $1
+         AND ts.status = 'completed'
+         AND ts.shared_to_profile = true
        ORDER BY ts.started_at DESC, ts.id DESC
        LIMIT $2`,
       [userId, limit],

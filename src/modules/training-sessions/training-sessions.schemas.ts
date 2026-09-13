@@ -50,6 +50,7 @@ export const trainingSessionBodySchema = z.object({
   note: optionalText,
   startedAt: requiredDate,
   finishedAt: optionalDate,
+  sharedToProfile: z.boolean().optional().default(false),
   exercises: z.array(sessionExerciseSchema).min(1, "missing_exercises"),
 });
 

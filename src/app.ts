@@ -18,11 +18,23 @@ export const createApp = () => {
   const app = express();
 
   app.disable("x-powered-by");
+  app.set("etag", false);
+  if (!isDev) app.set("trust proxy", 1);
 
   ensureExerciseImagesDir();
+  const exerciseImagesDir = path.join(
+    process.cwd(),
+    "uploads",
+    "exercise-images",
+  );
   app.use(
     "/uploads/exercise-images",
-    express.static(path.join(process.cwd(), "uploads", "exercise-images")),
+    express.static(exerciseImagesDir, {
+      maxAge: "365d",
+      immutable: true,
+      etag: false,
+      lastModified: false,
+    }),
   );
 
   app.use(compression());

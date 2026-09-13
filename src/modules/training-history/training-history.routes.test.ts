@@ -185,7 +185,7 @@ describe("training history routes", () => {
   });
 
   it("GET /api/v1/training-history/:sessionId returns 404 when missing", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValue({ rows: [] });
     const res = await request(app)
       .get(`/api/v1/training-history/${SESSION_ID}`)
       .set(authHeaders());

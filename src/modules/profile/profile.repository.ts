@@ -145,7 +145,7 @@ export const profileRepository = {
          ts.plan_name,
          COALESCE(ec.exercises_count, 0) AS exercises_count,
          COALESCE(sc.completed_sets_count, 0) AS completed_sets_count,
-         COALESCE(vc.volume_kg, 0) AS volume_kg
+         COALESCE(sc.volume_kg, 0) AS volume_kg
        FROM training_sessions ts
        LEFT JOIN LATERAL (
          SELECT COUNT(*)::int AS exercises_count
@@ -153,20 +153,16 @@ export const profileRepository = {
          WHERE tse.session_id = ts.id
        ) ec ON true
        LEFT JOIN LATERAL (
-         SELECT COUNT(*)::int AS completed_sets_count
+         SELECT
+           COUNT(*)::int AS completed_sets_count,
+           COALESCE(SUM(
+             COALESCE(NULLIF(regexp_replace(tss.actual_weight, '[^0-9.,]', '', 'g'), ''), '0')::numeric
+             * COALESCE(NULLIF(regexp_replace(tss.actual_reps, '[^0-9]', '', 'g'), ''), '0')::numeric
+           ), 0)::float AS volume_kg
          FROM training_session_exercises tse
          JOIN training_session_sets tss ON tss.session_exercise_id = tse.id
          WHERE tse.session_id = ts.id AND tss.completed = true
        ) sc ON true
-       LEFT JOIN LATERAL (
-         SELECT COALESCE(SUM(
-           COALESCE(NULLIF(regexp_replace(tss.actual_weight, '[^0-9.,]', '', 'g'), ''), '0')::numeric
-           * COALESCE(NULLIF(regexp_replace(tss.actual_reps, '[^0-9]', '', 'g'), ''), '0')::numeric
-         ), 0)::float AS volume_kg
-         FROM training_session_exercises tse
-         JOIN training_session_sets tss ON tss.session_exercise_id = tse.id
-         WHERE tse.session_id = ts.id AND tss.completed = true
-       ) vc ON true
        WHERE ts.user_id = $1
          AND ts.status = 'completed'
          AND ts.shared_to_profile = true

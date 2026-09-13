@@ -1,5 +1,5 @@
-import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { comparePassword, hashPassword } from "../../common/bcrypt-worker.js";
 import { AppError } from "../../common/errors.js";
 import { env } from "../../config/env.js";
 import type { LoginInput, RegisterInput } from "./auth.schemas.js";
@@ -8,7 +8,7 @@ import { authRepository, type UserRow } from "./auth.repository.js";
 const SALT_ROUNDS = 12;
 const TOKEN_TTL = "30d";
 
-export const DUMMY_HASH = await bcrypt.hash(
+export const DUMMY_HASH = await hashPassword(
   "__timing_guard_dummy__",
   SALT_ROUNDS,
 );
@@ -29,7 +29,7 @@ export const authService = {
   ): Promise<{ token: string; user: ReturnType<typeof formatUser> }> => {
     const { email, password, firstName, lastName } = input;
     const normalizedEmail = email.toLowerCase();
-    const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+    const passwordHash = await hashPassword(password, SALT_ROUNDS);
 
     const user = await authRepository.createUser(
       normalizedEmail,
@@ -57,7 +57,7 @@ export const authService = {
     );
 
     const hashToCompare = user?.password_hash ?? DUMMY_HASH;
-    const valid = await bcrypt.compare(input.password, hashToCompare);
+    const valid = await comparePassword(input.password, hashToCompare);
 
     if (!user || !valid) {
       throw new AppError(401, "invalid_credentials");

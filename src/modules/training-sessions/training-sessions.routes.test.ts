@@ -265,8 +265,8 @@ describe("training sessions routes", () => {
     const exerciseInsert = mockQuery.mock.calls.find((call) =>
       String(call[0]).includes("INSERT INTO training_session_exercises"),
     );
-    expect(exerciseInsert?.[1]?.[2]).toBeNull();
-    expect(exerciseInsert?.[1]?.[4]).toBe("Bench");
+    expect(exerciseInsert?.[1]?.[3]).toBeNull();
+    expect(exerciseInsert?.[1]?.[5]).toBe("Bench");
     expect(mockRelease).toHaveBeenCalledOnce();
   });
 
@@ -311,11 +311,64 @@ describe("training sessions routes", () => {
       .set(authHeaders());
 
     expect(res.status).toBe(200);
-    expect(res.body).toHaveLength(1);
-    expect(res.body[0]).toMatchObject({
-      id: SESSION_ID,
-      status: "completed",
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body).toMatchObject({
+      items: [{ id: SESSION_ID, status: "completed" }],
+      nextCursor: null,
+      hasMore: false,
     });
+    const historySql = mockQuery.mock.calls
+      .map((call) => String(call[0]))
+      .find((sql) => sql.includes("FROM training_sessions"));
+    expect(historySql).toContain("ORDER BY started_at DESC, id DESC");
+    expect(historySql).toContain("LIMIT");
+  });
+
+  it("GET /training-sessions/history returns 400 for invalid limit", async () => {
+    const res = await request(app)
+      .get("/training-sessions/history?limit=101")
+      .set(authHeaders());
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ error: "invalid_limit" });
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("GET /training-sessions/history pages with a keyset cursor", async () => {
+    whenSqlContains({
+      "FROM training_sessions": { rows: [sessionRow] },
+      "FROM training_session_exercises": { rows: [sessionExerciseRow] },
+      "FROM training_session_sets": { rows: [sessionSetRow] },
+    });
+
+    const cursor = Buffer.from(
+      JSON.stringify({
+        startedAt: "2026-05-12T10:00:00.000Z",
+        id: SESSION_ID,
+      }),
+      "utf8",
+    ).toString("base64url");
+
+    const res = await request(app)
+      .get(
+        `/training-sessions/history?limit=1&cursor=${cursor}&updatedSince=2026-01-01T00:00:00.000Z`,
+      )
+      .set(authHeaders());
+
+    expect(res.status).toBe(200);
+    expect(res.body.hasMore).toBe(false);
+    const historyCall = mockQuery.mock.calls.find((call) =>
+      String(call[0]).includes("FROM training_sessions"),
+    );
+    expect(String(historyCall?.[0])).toContain("updated_at >");
+    expect(String(historyCall?.[0])).toContain("started_at <");
+    expect(historyCall?.[1]).toEqual([
+      USER_ID,
+      new Date("2026-01-01T00:00:00.000Z"),
+      "2026-05-12T10:00:00.000Z",
+      SESSION_ID,
+      2,
+    ]);
   });
 
   it("PATCH /training-sessions/:id/shared-to-profile updates only the flag", async () => {

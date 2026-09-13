@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { AppError } from "../../common/errors.js";
 import { requirePool } from "../../db/require-pool.js";
@@ -68,35 +69,44 @@ const replaceChildren = async (
   const exercises = [...body.exercises].sort(
     (a, b) => (a.position ?? 0) - (b.position ?? 0),
   );
+  if (exercises.length === 0) return;
 
+  const exerciseIds = exercises.map(() => randomUUID());
+  const exerciseValueClauses: string[] = [];
+  const exerciseParams: unknown[] = [];
   for (const [exerciseIndex, exercise] of exercises.entries()) {
-    const { rows } = await client.query(
-      `INSERT INTO training_plan_exercises (client_id, plan_id, exercise_id, position)
-       VALUES ($1::uuid, $2, $3, $4)
-       RETURNING id`,
-      [
-        exercise.clientId ?? null,
-        planId,
-        exercise.exerciseId,
-        exercise.position ?? exerciseIndex,
-      ],
+    const offset = exerciseIndex * 5;
+    exerciseValueClauses.push(
+      `($${offset + 1}::uuid, $${offset + 2}::uuid, $${offset + 3}, $${offset + 4}, $${offset + 5})`,
     );
-    const planExerciseId = rows[0].id as string;
+    exerciseParams.push(
+      exerciseIds[exerciseIndex],
+      exercise.clientId ?? null,
+      planId,
+      exercise.exerciseId,
+      exercise.position ?? exerciseIndex,
+    );
+  }
+  await client.query(
+    `INSERT INTO training_plan_exercises (id, client_id, plan_id, exercise_id, position)
+     VALUES ${exerciseValueClauses.join(", ")}`,
+    exerciseParams,
+  );
+
+  const setValueClauses: string[] = [];
+  const setParams: unknown[] = [];
+  let setOrdinal = 0;
+  for (const [exerciseIndex, exercise] of exercises.entries()) {
+    const planExerciseId = exerciseIds[exerciseIndex];
     const sets = [...exercise.sets].sort(
       (a, b) => (a.position ?? 0) - (b.position ?? 0),
     );
-
-    if (sets.length === 0) continue;
-
-    // Batch insert all sets for this exercise in a single query.
-    const valuesClauses: string[] = [];
-    const params: unknown[] = [];
     for (const [setIndex, set] of sets.entries()) {
-      const offset = setIndex * 7;
-      valuesClauses.push(
+      const offset = setOrdinal * 7;
+      setValueClauses.push(
         `($${offset + 1}::uuid, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7})`,
       );
-      params.push(
+      setParams.push(
         set.clientId ?? null,
         planExerciseId,
         set.position ?? setIndex,
@@ -105,14 +115,17 @@ const replaceChildren = async (
         set.rir?.trim() || null,
         set.tempo?.trim() || null,
       );
+      setOrdinal += 1;
     }
-    await client.query(
-      `INSERT INTO training_plan_sets
-        (client_id, plan_exercise_id, position, weight, reps, rir, tempo)
-       VALUES ${valuesClauses.join(", ")}`,
-      params,
-    );
   }
+  if (setValueClauses.length === 0) return;
+
+  await client.query(
+    `INSERT INTO training_plan_sets
+      (client_id, plan_exercise_id, position, weight, reps, rir, tempo)
+     VALUES ${setValueClauses.join(", ")}`,
+    setParams,
+  );
 };
 
 /**

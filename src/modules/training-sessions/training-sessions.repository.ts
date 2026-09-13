@@ -1,7 +1,14 @@
+import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { AppError } from "../../common/errors.js";
 import { requirePool } from "../../db/require-pool.js";
 import type { TrainingSessionBodyInput } from "./training-sessions.schemas.js";
+
+export interface TrainingSessionHistoryFilters {
+  limit: number;
+  cursor?: { startedAt: string; id: string };
+  updatedSince?: Date;
+}
 
 export interface TrainingSessionSetRow {
   id: string;
@@ -69,38 +76,51 @@ const replaceChildren = async (
   const exercises = [...body.exercises].sort(
     (a, b) => (a.position ?? 0) - (b.position ?? 0),
   );
+  if (exercises.length === 0) return;
 
+  const exerciseIds = exercises.map(() => randomUUID());
+  const exerciseValueClauses: string[] = [];
+  const exerciseParams: unknown[] = [];
   for (const [exerciseIndex, exercise] of exercises.entries()) {
-    const { rows } = await client.query(
-      `INSERT INTO training_session_exercises
-        (client_id, session_id, exercise_id, exercise_client_id, exercise_name,
-         exercise_muscles, exercise_category, exercise_image_url, position)
-       VALUES ($1::uuid, $2, $3::uuid, $4::uuid, $5, $6, $7, $8, $9)
-       RETURNING id`,
-      [
-        exercise.clientId ?? null,
-        sessionId,
-        exercise.exerciseId ?? null,
-        exercise.exerciseClientId ?? null,
-        exercise.exerciseName,
-        exercise.exerciseMuscles,
-        exercise.exerciseCategory,
-        trimOrNull(exercise.exerciseImageUrl),
-        exercise.position ?? exerciseIndex,
-      ],
+    const offset = exerciseIndex * 10;
+    exerciseValueClauses.push(
+      `($${offset + 1}::uuid, $${offset + 2}::uuid, $${offset + 3}, $${offset + 4}::uuid, $${offset + 5}::uuid, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10})`,
     );
-    const sessionExerciseId = rows[0].id as string;
+    exerciseParams.push(
+      exerciseIds[exerciseIndex],
+      exercise.clientId ?? null,
+      sessionId,
+      exercise.exerciseId ?? null,
+      exercise.exerciseClientId ?? null,
+      exercise.exerciseName,
+      exercise.exerciseMuscles,
+      exercise.exerciseCategory,
+      trimOrNull(exercise.exerciseImageUrl),
+      exercise.position ?? exerciseIndex,
+    );
+  }
+  await client.query(
+    `INSERT INTO training_session_exercises
+      (id, client_id, session_id, exercise_id, exercise_client_id, exercise_name,
+       exercise_muscles, exercise_category, exercise_image_url, position)
+     VALUES ${exerciseValueClauses.join(", ")}`,
+    exerciseParams,
+  );
+
+  const setValueClauses: string[] = [];
+  const setParams: unknown[] = [];
+  let setOrdinal = 0;
+  for (const [exerciseIndex, exercise] of exercises.entries()) {
+    const sessionExerciseId = exerciseIds[exerciseIndex];
     const sets = [...exercise.sets].sort(
       (a, b) => (a.position ?? 0) - (b.position ?? 0),
     );
-    const valuesClauses: string[] = [];
-    const params: unknown[] = [];
     for (const [setIndex, set] of sets.entries()) {
-      const offset = setIndex * 13;
-      valuesClauses.push(
+      const offset = setOrdinal * 13;
+      setValueClauses.push(
         `($${offset + 1}::uuid, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13})`,
       );
-      params.push(
+      setParams.push(
         set.clientId ?? null,
         sessionExerciseId,
         set.position ?? setIndex,
@@ -115,16 +135,19 @@ const replaceChildren = async (
         set.completed,
         set.completedAt ?? null,
       );
+      setOrdinal += 1;
     }
-    await client.query(
-      `INSERT INTO training_session_sets
-        (client_id, session_exercise_id, position, planned_weight, planned_reps,
-         planned_rir, planned_tempo, actual_weight, actual_reps, actual_rir,
-         actual_tempo, completed, completed_at)
-       VALUES ${valuesClauses.join(", ")}`,
-      params,
-    );
   }
+  if (setValueClauses.length === 0) return;
+
+  await client.query(
+    `INSERT INTO training_session_sets
+      (client_id, session_exercise_id, position, planned_weight, planned_reps,
+       planned_rir, planned_tempo, actual_weight, actual_reps, actual_rir,
+       actual_tempo, completed, completed_at)
+     VALUES ${setValueClauses.join(", ")}`,
+    setParams,
+  );
 };
 
 /**
@@ -217,15 +240,20 @@ const loadSessions = async (
   userId: string,
   whereSql: string,
   params: unknown[],
+  limit?: number,
 ): Promise<TrainingSessionRow[]> => {
+  const queryParams = [userId, ...params];
+  const limitSql =
+    limit === undefined ? "" : `LIMIT $${queryParams.push(limit)}`;
   const { rows: sessionRows } = await client.query(
     `SELECT id, client_id, user_id, plan_id, plan_client_id, plan_name, status,
             note, started_at, finished_at, shared_to_profile, created_at,
             updated_at
      FROM training_sessions
      WHERE user_id = $1 ${whereSql}
-     ORDER BY started_at DESC, created_at DESC`,
-    [userId, ...params],
+     ORDER BY started_at DESC, id DESC
+     ${limitSql}`,
+    queryParams,
   );
   if (sessionRows.length === 0) return [];
 
@@ -444,15 +472,37 @@ export const trainingSessionsRepository = {
     }
   },
 
-  history: async (userId: string): Promise<TrainingSessionRow[]> => {
+  history: async (
+    userId: string,
+    filters: TrainingSessionHistoryFilters,
+  ): Promise<TrainingSessionRow[]> => {
     const pool = requirePool();
     const client = await pool.connect();
     try {
+      const clauses = ["AND status IN ('completed', 'cancelled')"];
+      const params: unknown[] = [];
+
+      if (filters.updatedSince) {
+        params.push(filters.updatedSince);
+        clauses.push(`AND updated_at > $${params.length + 1}`);
+      }
+      if (filters.cursor) {
+        params.push(filters.cursor.startedAt);
+        const startedAtParam = params.length + 1;
+        params.push(filters.cursor.id);
+        const idParam = params.length + 1;
+        clauses.push(`AND (
+          started_at < $${startedAtParam}::timestamptz
+          OR (started_at = $${startedAtParam}::timestamptz AND id < $${idParam}::uuid)
+        )`);
+      }
+
       return await loadSessions(
         client,
         userId,
-        "AND status IN ('completed', 'cancelled')",
-        [],
+        clauses.join(" "),
+        params,
+        filters.limit + 1,
       );
     } finally {
       client.release();

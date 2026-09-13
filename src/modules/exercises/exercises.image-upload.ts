@@ -14,10 +14,7 @@ export const ensureExerciseImagesDir = (): void => {
 };
 
 const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    ensureExerciseImagesDir();
-    cb(null, exerciseImagesDir);
-  },
+  destination: exerciseImagesDir,
   filename: (_req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
     const allowed = [".jpg", ".jpeg", ".png", ".webp"];

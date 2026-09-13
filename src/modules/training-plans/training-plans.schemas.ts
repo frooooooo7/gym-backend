@@ -24,7 +24,7 @@ const planExerciseSchema = z.object({
   clientId: postgresUuid.optional(),
   exerciseId: postgresUuid,
   position: z.number().int().min(0).optional(),
-  sets: z.array(setSchema).min(1, "missing_sets"),
+  sets: z.array(setSchema).min(1, "missing_sets").max(50),
 });
 
 export const trainingPlanBodySchema = z.object({
@@ -40,7 +40,7 @@ export const trainingPlanBodySchema = z.object({
     .max(7)
     .default([])
     .transform((days) => [...new Set(days)].sort((a, b) => a - b)),
-  exercises: z.array(planExerciseSchema).min(1, "missing_exercises"),
+  exercises: z.array(planExerciseSchema).min(1, "missing_exercises").max(50),
 });
 
 export type TrainingPlanBodyInput = z.infer<typeof trainingPlanBodySchema>;

@@ -47,7 +47,7 @@ export const exercisesRepository = {
 
     if (muscle !== "all") {
       params.push(muscle);
-      conditions.push(`$${params.length} = ANY(e.muscles)`);
+      conditions.push(`e.muscles @> ARRAY[$${params.length}]::text[]`);
     }
 
     switch (filter) {
@@ -84,7 +84,7 @@ export const exercisesRepository = {
       LEFT JOIN user_favourite_exercises ufe
         ON ufe.exercise_id = e.id AND ufe.user_id = $1
       ${where}
-      ORDER BY e.name
+      ORDER BY e.name, e.id
       LIMIT ${limitParam} OFFSET ${offsetParam}
     `;
 

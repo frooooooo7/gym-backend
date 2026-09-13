@@ -289,6 +289,58 @@ const MIGRATIONS: Migration[] = [
         WHERE status = 'completed' AND shared_to_profile = true;
     `,
   },
+  {
+    name: "011_performance_indexes",
+    sql: `
+      CREATE INDEX IF NOT EXISTS training_sessions_user_started_idx
+        ON training_sessions (user_id, started_at DESC, id DESC);
+      CREATE INDEX IF NOT EXISTS training_sessions_user_updated_idx
+        ON training_sessions (user_id, updated_at DESC);
+      CREATE INDEX IF NOT EXISTS training_sessions_plan_id_idx
+        ON training_sessions (plan_id) WHERE plan_id IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS training_plan_exercises_exercise_id_idx
+        ON training_plan_exercises (exercise_id);
+      CREATE INDEX IF NOT EXISTS training_session_exercises_exercise_id_idx
+        ON training_session_exercises (exercise_id) WHERE exercise_id IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS user_favourite_exercises_exercise_id_idx
+        ON user_favourite_exercises (exercise_id);
+      CREATE INDEX IF NOT EXISTS training_plans_user_updated_idx
+        ON training_plans (user_id, updated_at DESC);
+      CREATE INDEX IF NOT EXISTS training_sessions_user_status_started_id_idx
+        ON training_sessions (user_id, status, started_at DESC, id DESC);
+    `,
+  },
+  {
+    // Osobno i bez twardego wymagania: na hostowanym Postgresie rola bywa bez
+    // prawa do CREATE EXTENSION (albo pg_trgm siedzi w innym schemacie) —
+    // wtedy wyszukiwanie działa bez indeksów trigramowych, zamiast blokować
+    // start serwera.
+    name: "012_trigram_search_indexes",
+    sql: `
+      DO $$
+      BEGIN
+        CREATE EXTENSION IF NOT EXISTS pg_trgm;
+      EXCEPTION WHEN OTHERS THEN
+        RAISE NOTICE 'pg_trgm unavailable, skipping trigram indexes: %', SQLERRM;
+      END
+      $$;
+
+      DO $$
+      BEGIN
+        IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm') THEN
+          CREATE INDEX IF NOT EXISTS users_handle_trgm_idx
+            ON users USING GIN (lower(handle) gin_trgm_ops);
+          CREATE INDEX IF NOT EXISTS users_fullname_trgm_idx
+            ON users USING GIN (lower(first_name || ' ' || last_name) gin_trgm_ops);
+          CREATE INDEX IF NOT EXISTS exercises_name_trgm_idx
+            ON exercises USING GIN (lower(name) gin_trgm_ops);
+        END IF;
+      EXCEPTION WHEN OTHERS THEN
+        RAISE NOTICE 'trigram indexes skipped: %', SQLERRM;
+      END
+      $$;
+    `,
+  },
 ];
 
 const ADVISORY_LOCK_ID = 3_742_116_919;

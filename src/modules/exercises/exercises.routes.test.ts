@@ -328,7 +328,7 @@ describe("PUT /exercises/:id", () => {
   });
 
   it("returns 404 when exercise does not exist or is not owned", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE returned no rows
+    mockQuery.mockResolvedValue({ rows: [] });
 
     const res = await request(app)
       .put(`/exercises/${EXERCISE_ID}`)

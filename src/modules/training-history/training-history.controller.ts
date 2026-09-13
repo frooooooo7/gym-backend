@@ -20,20 +20,21 @@ const ERROR_MESSAGES: Record<string, string> = {
 
 const messageFor = (code: string): string => ERROR_MESSAGES[code] ?? code;
 
-const weakEtag = (value: unknown): string => {
-  const hash = createHash("sha1").update(JSON.stringify(value)).digest("hex");
+const weakEtagFromString = (value: string): string => {
+  const hash = createHash("sha1").update(value).digest("hex");
   return `W/"${hash}"`;
 };
 
 const sendWithEtag = (req: Request, res: Response, body: unknown) => {
-  const etag = weakEtag(body);
+  const json = JSON.stringify(body);
+  const etag = weakEtagFromString(json);
   res.setHeader("ETag", etag);
   res.setHeader("Cache-Control", "private, must-revalidate");
   if (req.headers["if-none-match"] === etag) {
     res.status(304).send();
     return;
   }
-  res.status(200).json(body);
+  res.type("json").send(json);
 };
 
 export const trainingHistoryController = {

@@ -16,6 +16,9 @@ const server = app.listen(env.port, () => {
     );
   }
 });
+server.keepAliveTimeout = 65_000;
+// Musi być dłuższy niż keepAliveTimeout, inaczej proxy trafia na zamknięte gniazdo.
+server.headersTimeout = 66_000;
 
 const shutdown = async (signal: string) => {
   console.log(`[gym-backend] ${signal}, shutting down...`);

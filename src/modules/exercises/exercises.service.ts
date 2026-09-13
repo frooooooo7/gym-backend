@@ -105,18 +105,20 @@ export const createExercisesService = (repo: ExercisesRepositoryDeps) => ({
     exerciseId: string,
     body: UpsertBodyInput,
   ) => {
-    const row = await repo.update(
-      body.name,
-      [...body.muscles],
-      body.category,
-      body.description,
-      exerciseId,
-      userId,
-    );
+    const [row, fav] = await Promise.all([
+      repo.update(
+        body.name,
+        [...body.muscles],
+        body.category,
+        body.description,
+        exerciseId,
+        userId,
+      ),
+      repo.hasFavourite(userId, exerciseId),
+    ]);
     if (!row) {
       throw new AppError(404, "not_found_or_not_yours");
     }
-    const fav = await repo.hasFavourite(userId, exerciseId);
     return formatExercise({ ...row, is_favourite: fav }, userId);
   },
 
@@ -132,11 +134,10 @@ export const createExercisesService = (repo: ExercisesRepositoryDeps) => ({
       throw new AppError(404, "not_found_or_not_yours");
     }
 
-    const row = await repo.updateExerciseImageUrl(
-      exerciseId,
-      userId,
-      publicPath,
-    );
+    const [row, fav] = await Promise.all([
+      repo.updateExerciseImageUrl(exerciseId, userId, publicPath),
+      repo.hasFavourite(userId, exerciseId),
+    ]);
     if (!row) {
       await safeUnlink(savedDiskPath);
       throw new AppError(404, "not_found_or_not_yours");
@@ -146,7 +147,6 @@ export const createExercisesService = (repo: ExercisesRepositoryDeps) => ({
       await safeUnlink(diskPathFromPublicUrl(meta.imageUrl));
     }
 
-    const fav = await repo.hasFavourite(userId, exerciseId);
     return formatExercise({ ...row, is_favourite: fav }, userId);
   },
 

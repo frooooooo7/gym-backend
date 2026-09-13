@@ -10,9 +10,11 @@ export const getPool = (): pg.Pool | null => {
     return null;
   }
   if (!pool) {
+    const parsedMax = Number.parseInt(process.env.PG_POOL_MAX ?? "10", 10);
     pool = new Pool({
       connectionString: env.databaseUrl,
-      max: 10,
+      max: Number.isFinite(parsedMax) && parsedMax > 0 ? parsedMax : 10,
+      keepAlive: true,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 5_000,
       statement_timeout: 10_000,

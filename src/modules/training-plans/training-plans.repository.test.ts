@@ -185,7 +185,10 @@ describe("trainingPlansRepository.upsert", () => {
     );
 
     expect(deleteCallIndex).toBeGreaterThan(-1);
+    const generatedExerciseId = childInsertCall?.[1]?.[0];
+    expect(typeof generatedExerciseId).toBe("string");
     expect(childInsertCall?.[1]).toEqual([
+      generatedExerciseId,
       PLAN_EXERCISE_CLIENT_ID,
       PLAN_ID,
       EXERCISE_ID,
@@ -193,7 +196,7 @@ describe("trainingPlansRepository.upsert", () => {
     ]);
     expect(setInsertCall?.[1]).toEqual([
       SET_CLIENT_ID,
-      PLAN_EXERCISE_ID,
+      generatedExerciseId,
       0,
       "60",
       "8",

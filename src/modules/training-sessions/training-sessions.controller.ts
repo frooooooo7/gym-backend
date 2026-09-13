@@ -3,8 +3,10 @@ import { asyncHandler } from "../../common/async-handler.js";
 import { firstZodMessage, uuidParamsSchema } from "../../common/schemas.js";
 import type { AuthRequest } from "../../middleware/auth.js";
 import {
+  decodeHistoryCursor,
   sharedToProfileBodySchema,
   trainingSessionBodySchema,
+  trainingSessionHistoryQuerySchema,
 } from "./training-sessions.schemas.js";
 import { trainingSessionsService } from "./training-sessions.service.js";
 
@@ -52,9 +54,18 @@ export const trainingSessionsController = {
   }),
 
   history: asyncHandler(async (req: Request, res: Response) => {
+    const parsed = trainingSessionHistoryQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ error: firstZodMessage(parsed.error.issues) });
+      return;
+    }
     const userId = (req as AuthRequest).auth.sub;
-    const sessions = await trainingSessionsService.history(userId);
-    res.status(200).json(sessions);
+    const page = await trainingSessionsService.history(userId, {
+      limit: parsed.data.limit,
+      updatedSince: parsed.data.updatedSince,
+      cursor: decodeHistoryCursor(parsed.data.cursor),
+    });
+    res.status(200).json(page);
   }),
 
   setSharedToProfile: asyncHandler(async (req: Request, res: Response) => {

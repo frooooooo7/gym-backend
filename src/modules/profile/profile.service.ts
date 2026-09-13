@@ -124,29 +124,35 @@ const formatActivity = (row: ProfileActivityRow) => ({
 
 export const profileService = {
   getOwnProfile: async (userId: string) => {
-    const row = await profileRepository.findProfileById(userId);
+    const [row, stats] = await Promise.all([
+      profileRepository.findProfileById(userId),
+      profileRepository.findStatsByUserId(userId),
+    ]);
     if (!row) {
       throw new AppError(404, "user_not_found");
     }
-    const stats = await profileRepository.findStatsByUserId(userId);
     return formatProfile(row, stats, true);
   },
 
   getUserProfile: async (viewerId: string, targetUserId: string) => {
-    const row = await profileRepository.findProfileById(targetUserId);
+    const [row, stats] = await Promise.all([
+      profileRepository.findProfileById(targetUserId),
+      profileRepository.findStatsByUserId(targetUserId),
+    ]);
     if (!row) {
       throw new AppError(404, "user_not_found");
     }
-    const stats = await profileRepository.findStatsByUserId(targetUserId);
     return formatProfile(row, stats, viewerId === targetUserId);
   },
 
   updateBio: async (userId: string, bio: string | null) => {
-    const row = await profileRepository.updateBio(userId, bio);
+    const [row, stats] = await Promise.all([
+      profileRepository.updateBio(userId, bio),
+      profileRepository.findStatsByUserId(userId),
+    ]);
     if (!row) {
       throw new AppError(404, "user_not_found");
     }
-    const stats = await profileRepository.findStatsByUserId(userId);
     return formatProfile(row, stats, true);
   },
 
@@ -181,11 +187,13 @@ export const profileService = {
     targetUserId: string,
     limit: number,
   ) => {
-    const row = await profileRepository.findProfileById(targetUserId);
+    const [row, rows] = await Promise.all([
+      profileRepository.findProfileById(targetUserId),
+      profileRepository.listRecentActivities(targetUserId, limit),
+    ]);
     if (!row) {
       throw new AppError(404, "user_not_found");
     }
-    const rows = await profileRepository.listRecentActivities(targetUserId, limit);
     return rows.map(formatActivity);
   },
 };

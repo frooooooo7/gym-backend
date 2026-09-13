@@ -82,10 +82,10 @@ export const trainingHistoryService = {
   },
 
   getById: async (userId: string, sessionId: string) => {
-    const session = await trainingHistoryRepository.findOneForUser(
-      userId,
-      sessionId,
-    );
+    const [session, exercises] = await Promise.all([
+      trainingHistoryRepository.findOneForUser(userId, sessionId),
+      trainingHistoryRepository.findExercises(sessionId),
+    ]);
     if (!session) {
       throw new AppError(
         404,
@@ -93,8 +93,6 @@ export const trainingHistoryService = {
         "training history entry was not found for this user",
       );
     }
-
-    const exercises = await trainingHistoryRepository.findExercises(sessionId);
     const sets = await trainingHistoryRepository.findSets(exercises.map((e) => e.id));
     const setsByExerciseId = new Map<string, TrainingHistorySetRow[]>();
     for (const set of sets) {

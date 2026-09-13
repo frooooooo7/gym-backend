@@ -1,0 +1,30 @@
+---
+description: Wydajność API Node/Express/PostgreSQL — indeksy, paginacja, brak N+1, event loop bez blokad
+globs: src/**/*.ts
+alwaysApply: false
+---
+
+# Wydajność backendu
+
+## Zapytania i indeksy
+- Nowa kolumna w `WHERE`/`JOIN`/`ORDER BY` lub nowy FK = indeks w tej samej migracji (`db/migrate.ts`). FK bez indeksu jest zabroniony (usuwanie rodzica robi seq scan dzieci). Indeks musi **pasować do sortowania**: dla `ORDER BY started_at DESC, id DESC` przy `user_id = $1` potrzeba `(user_id, started_at DESC, id DESC)`, nie `(user_id, status, started_at)`.
+- Zakaz zapytań w pętli (N+1). Dzieci wstawiaj jednym `INSERT ... SELECT FROM unnest($1::uuid[], ...)` lub multi-row `VALUES`; ID generuj w JS (`crypto.randomUUID()`), żeby nie potrzebować `RETURNING` per wiersz.
+- Każdy endpoint listujący jest paginowany kursorem (`LIMIT n+1`, cap 50–100) — wzorzec z `training-history.repository.ts`. Endpointy „pełnej historii/synchronizacji” przyjmują `updatedSince` i zwracają tylko delta + tombstony.
+- `ANY($1)` na tablicy tekstowej nie używa GIN — pisz `col @> ARRAY[$1]::text[]`. `LIKE '%q%'` wymaga `pg_trgm` + GIN, inaczej to full scan. `CREATE EXTENSION` trzymaj w osobnej migracji z `DO $$ ... EXCEPTION WHEN OTHERS` — brak uprawnień na hostowanym PG nie może wycofać innych indeksów ani zablokować startu serwera.
+- Niezależne zapytania w serwisie → `Promise.all`; rozważ jedno zapytanie z `json_agg` zamiast 3 + grupowanie w JS.
+- Dedykowany `pool.connect()` **tylko** w transakcji; odczyty przez `pool.query` (pula ma 10 połączeń).
+- Sekwencyjne `COUNT`/`LATERAL` po tym samym joinie łącz w jeden podzapytanie.
+
+## Walidacja i payload
+- Każda zagnieżdżona tablica w schemacie Zod ma `.max()` (np. `exercises`/`sets` ≤ 50). Limit bind‑parametrów Postgresa to 65 535.
+- Obrazki po uploadzie przeskaluj (`sharp`, ≤ 1024 px, webp) i serwuj z `express.static(dir, { maxAge: "365d", immutable: true })` — nazwy plików są niezmienne.
+
+## Event loop
+- Żadnych CPU‑ciężkich operacji w JS na głównym wątku: bcrypt → natywny `bcrypt`/`argon2` lub `worker_threads`. Nie obniżaj kosztu poniżej 12.
+- Sync `fs.*Sync` tylko przy starcie procesu, nie w handlerze.
+- Duże odpowiedzi serializuj raz: `JSON.stringify` → ręczny ETag → `res.send`; nie licz ETagu trzykrotnie (helper + `res.json` + domyślny `etag` Expressa).
+
+## Infrastruktura
+- Za proxy: `app.set("trust proxy", 1)`, inaczej rate limiter jest globalny.
+- Pula i keep‑alive z env (`PG_POOL_MAX`, `keepAlive: true`), `server.keepAliveTimeout` > idle timeout LB, a `server.headersTimeout` > `keepAliveTimeout`.
+- Liveness → `/health` (bez DB); readiness → `/ready`.

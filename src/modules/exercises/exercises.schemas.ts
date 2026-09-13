@@ -38,7 +38,7 @@ export const upsertBodySchema = z.object({
     .min(1, "missing_name")
     .max(120)
     .transform((s) => s.trim()),
-  muscles: z.array(z.enum(VALID_MUSCLES)).min(1, "missing_muscles"),
+  muscles: z.array(z.enum(VALID_MUSCLES)).min(1, "missing_muscles").max(20),
   category: z.enum(VALID_CATEGORIES, { message: "invalid_category" }),
   description: z
     .string()

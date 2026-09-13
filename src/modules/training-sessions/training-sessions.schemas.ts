@@ -1,6 +1,73 @@
 import { z } from "zod";
 import { postgresUuid, requiredDate, optionalDate } from "../../common/schemas.js";
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const cursorPayloadSchema = z.object({
+  startedAt: z.string().datetime({ offset: true }),
+  id: z.string().regex(UUID_PATTERN, "invalid_cursor"),
+});
+
+const emptyToUndefined = (value: string | undefined) => {
+  const trimmed = value?.trim() ?? "";
+  return trimmed.length > 0 ? trimmed : undefined;
+};
+
+const optionalDateQuery = z
+  .string()
+  .optional()
+  .transform((value) => emptyToUndefined(value))
+  .pipe(z.string().datetime({ offset: true }).optional())
+  .transform((value) => (value ? new Date(value) : undefined));
+
+export const decodeHistoryCursor = (
+  cursor: string | undefined,
+): { startedAt: string; id: string } | undefined => {
+  if (!cursor) return undefined;
+  const decoded = Buffer.from(cursor, "base64url").toString("utf8");
+  return cursorPayloadSchema.parse(JSON.parse(decoded));
+};
+
+export const encodeHistoryCursor = (startedAt: Date, id: string): string =>
+  Buffer.from(
+    JSON.stringify({
+      startedAt: startedAt.toISOString(),
+      id,
+    }),
+    "utf8",
+  ).toString("base64url");
+
+export const trainingSessionHistoryQuerySchema = z
+  .object({
+    cursor: z.string().optional().transform((value) => emptyToUndefined(value)),
+    limit: z.coerce
+      .number()
+      .int()
+      .min(1, "invalid_limit")
+      .max(100, "invalid_limit")
+      .default(50),
+    updatedSince: optionalDateQuery,
+  })
+  .superRefine((value, ctx) => {
+    if (!value.cursor) return;
+    try {
+      const decoded = Buffer.from(value.cursor, "base64url").toString("utf8");
+      const parsed = JSON.parse(decoded) as unknown;
+      cursorPayloadSchema.parse(parsed);
+    } catch {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "invalid_cursor",
+        path: ["cursor"],
+      });
+    }
+  });
+
+export type TrainingSessionHistoryQuery = z.infer<
+  typeof trainingSessionHistoryQuerySchema
+>;
+
 const optionalText = z
   .string()
   .max(2000)
@@ -34,11 +101,11 @@ const sessionExerciseSchema = z.object({
   exerciseId: nullableUuid,
   exerciseClientId: nullableUuid,
   exerciseName: z.string().trim().min(1, "missing_exercise_name").max(200),
-  exerciseMuscles: z.array(z.string().max(80)).default([]),
+  exerciseMuscles: z.array(z.string().max(80)).max(20).default([]),
   exerciseCategory: z.string().trim().min(1).max(80),
   exerciseImageUrl: z.string().max(2000).optional().nullable(),
   position: z.number().int().min(0).optional(),
-  sets: z.array(sessionSetSchema).min(1, "missing_sets"),
+  sets: z.array(sessionSetSchema).min(1, "missing_sets").max(50),
 });
 
 export const trainingSessionBodySchema = z.object({
@@ -51,7 +118,7 @@ export const trainingSessionBodySchema = z.object({
   startedAt: requiredDate,
   finishedAt: optionalDate,
   sharedToProfile: z.boolean().optional().default(false),
-  exercises: z.array(sessionExerciseSchema).min(1, "missing_exercises"),
+  exercises: z.array(sessionExerciseSchema).min(1, "missing_exercises").max(50),
 });
 
 export type TrainingSessionBodyInput = z.infer<

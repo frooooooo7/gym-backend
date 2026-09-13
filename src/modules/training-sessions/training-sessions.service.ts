@@ -1,7 +1,11 @@
 import { AppError } from "../../common/errors.js";
-import type { TrainingSessionBodyInput } from "./training-sessions.schemas.js";
+import {
+  encodeHistoryCursor,
+  type TrainingSessionBodyInput,
+} from "./training-sessions.schemas.js";
 import {
   trainingSessionsRepository,
+  type TrainingSessionHistoryFilters,
   type TrainingSessionRow,
 } from "./training-sessions.repository.js";
 
@@ -74,9 +78,20 @@ export const trainingSessionsService = {
     return row ? formatSession(row) : null;
   },
 
-  history: async (userId: string) => {
-    const rows = await trainingSessionsRepository.history(userId);
-    return rows.map(formatSession);
+  history: async (userId: string, filters: TrainingSessionHistoryFilters) => {
+    const rows = await trainingSessionsRepository.history(userId, filters);
+    const hasMore = rows.length > filters.limit;
+    const visibleRows = hasMore ? rows.slice(0, filters.limit) : rows;
+    const items = visibleRows.map(formatSession);
+    const last = items.at(-1);
+    return {
+      items,
+      nextCursor:
+        hasMore && last
+          ? encodeHistoryCursor(new Date(last.startedAt), last.id)
+          : null,
+      hasMore,
+    };
   },
 
   setSharedToProfile: async (

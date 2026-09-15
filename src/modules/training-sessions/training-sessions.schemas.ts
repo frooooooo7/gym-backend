@@ -108,18 +108,38 @@ const sessionExerciseSchema = z.object({
   sets: z.array(sessionSetSchema).min(1, "missing_sets").max(50),
 });
 
-export const trainingSessionBodySchema = z.object({
-  clientId: postgresUuid,
-  planId: nullableUuid,
-  planClientId: nullableUuid,
-  planName: z.string().trim().min(1, "missing_plan_name").max(120),
-  status: z.enum(["active", "completed", "cancelled"]),
-  note: optionalText,
-  startedAt: requiredDate,
-  finishedAt: optionalDate,
-  sharedToProfile: z.boolean().optional().default(false),
-  exercises: z.array(sessionExerciseSchema).min(1, "missing_exercises").max(50),
-});
+export const trainingSessionBodySchema = z
+  .object({
+    clientId: postgresUuid,
+    planId: nullableUuid,
+    planClientId: nullableUuid,
+    planName: z.string().trim().min(1, "missing_plan_name").max(120),
+    status: z.enum(["active", "completed", "cancelled"]),
+    note: optionalText,
+    startedAt: requiredDate,
+    finishedAt: optionalDate,
+    sharedToProfile: z.boolean().optional().default(false),
+    exercises: z
+      .array(sessionExerciseSchema)
+      .min(1, "missing_exercises")
+      .max(50),
+  })
+  .superRefine((value, ctx) => {
+    if (
+      value.finishedAt &&
+      value.finishedAt.getTime() < value.startedAt.getTime()
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "invalid_date_range",
+        path: ["finishedAt"],
+      });
+    }
+  });
+
+export const sessionIdParamsSchema = z.object({ id: postgresUuid });
+
+export const sessionClientIdParamsSchema = z.object({ clientId: postgresUuid });
 
 export type TrainingSessionBodyInput = z.infer<
   typeof trainingSessionBodySchema

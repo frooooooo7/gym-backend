@@ -120,6 +120,38 @@ Common codes for timeline endpoints:
 - For offline-first, store last successful payload + `ETag`. On reconnect, send `If-None-Match`; `304` means keep cached list/detail.
 - `hasNote`, `progressHighlight`, `durationSec`, `completedSetsCount`, and `exercisesCount` map directly to timeline card UI.
 
+## Deleting / editing finished workouts (sync-safe)
+
+Module: `src/modules/training-sessions/`. All endpoints require `Authorization: Bearer <jwt>`
+and act only on the caller's own sessions.
+
+| Method & path | Response |
+| --- | --- |
+| `DELETE /training-sessions/:id` | `204`. Any status. Idempotent: `204` again if this user already deleted it. `404 not_found_or_not_yours` when it never was the caller's. `400 invalid_uuid`. |
+| `DELETE /training-sessions/by-client-id/:clientId` | `204` always (idempotent). Deletes the session with that client id if the server has it, and always records the deletion — use it for sessions whose server id is unknown (e.g. create still queued). `400 invalid_uuid`. |
+| `PUT /training-sessions/:id` | Full edit, also for `completed` sessions: id, kudos and comments are kept; exercises/sets are replaced; `updatedAt` changes (so training-history ETags change). |
+
+A delete removes the session with its exercises, sets, kudos and comments (training-history,
+feed and profile activities stop showing it) and leaves a **tombstone** `(id, clientId, deletedAt)`.
+
+**`410 session_deleted`** — returned (nothing is written) by `POST /training-sessions` when its
+`clientId` was deleted, and by `PUT /training-sessions/:id` / `PATCH /training-sessions/:id/shared-to-profile`
+when the id (or the PUT body `clientId`) was deleted. Clients must treat `410` as final: drop the
+local session and its queued operations, and **don't** fall back from `PUT` to `POST`.
+
+**Deletion sync** — `GET /training-sessions/history` returns an extra field:
+
+```json
+{ "items": [], "nextCursor": null, "hasMore": false,
+  "deleted": [{ "id": "uuid", "clientId": "uuid|null", "deletedAt": "2026-09-15T10:00:00.000Z" }] }
+```
+
+- `deleted` lists tombstones with `deletedAt > updatedSince`, all of them on the first page
+  (request without `cursor`); later pages and requests without `updatedSince` get `[]`.
+- Match local sessions by `clientId` first, then `id`. For a session deleted by client id before it
+  reached the server, `id` is a random uuid that never belonged to a session.
+- `PUT` / `POST` validate `finishedAt >= startedAt` (equal is fine) → `400 invalid_date_range`.
+
 ## Social feed API (posts, kudos, comments)
 
 Module: `src/modules/feed/`. All endpoints require `Authorization: Bearer <jwt>`.

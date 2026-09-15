@@ -389,6 +389,29 @@ const MIGRATIONS: Migration[] = [
         WHERE status = 'completed' AND shared_to_profile = true;
     `,
   },
+  {
+    name: "014_training_session_tombstones",
+    sql: `
+      -- Deleted sessions leave a tombstone so an offline client's queued
+      -- POST (upsert by clientId) cannot resurrect them, and other devices
+      -- learn about the deletion via GET /training-sessions/history.
+      -- session_id is the deleted session's id, or a random uuid when the
+      -- session was deleted by client id before it ever reached the server.
+      CREATE TABLE IF NOT EXISTS training_session_tombstones (
+        session_id UUID        PRIMARY KEY,
+        user_id    UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        client_id  UUID,
+        deleted_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS training_session_tombstones_client_id_per_user
+        ON training_session_tombstones (user_id, client_id)
+        WHERE client_id IS NOT NULL;
+
+      CREATE INDEX IF NOT EXISTS training_session_tombstones_user_deleted_idx
+        ON training_session_tombstones (user_id, deleted_at);
+    `,
+  },
 ];
 
 const ADVISORY_LOCK_ID = 3_742_116_919;

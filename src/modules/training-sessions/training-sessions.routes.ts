@@ -24,6 +24,17 @@ trainingSessionsRouter.get(
   requireAuth,
   trainingSessionsController.history,
 );
+// Two-segment path, so it never matches DELETE /training-sessions/:id.
+trainingSessionsRouter.delete(
+  "/training-sessions/by-client-id/:clientId",
+  requireAuth,
+  trainingSessionsController.removeByClientId,
+);
+trainingSessionsRouter.delete(
+  "/training-sessions/:id",
+  requireAuth,
+  trainingSessionsController.remove,
+);
 trainingSessionsRouter.patch(
   "/training-sessions/:id/shared-to-profile",
   requireAuth,

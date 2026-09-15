@@ -229,6 +229,48 @@ const ensureNoOtherActiveSession = async (
   if (rowCount) throw new AppError(409, "active_session_exists");
 };
 
+/**
+ * Serialises writes that address a session by `(user, clientId)` — the POST
+ * upsert and both deletes — so a create racing a delete cannot slip in between
+ * the tombstone check and the insert. Released at COMMIT/ROLLBACK.
+ */
+const lockClientId = async (
+  client: PoolClient,
+  userId: string,
+  clientId: string,
+) => {
+  await client.query(
+    "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+    [`training_session:${userId}:${clientId.toLowerCase()}`],
+  );
+};
+
+const isTombstoned = async (
+  client: PoolClient,
+  userId: string,
+  { sessionId, clientId }: { sessionId?: string; clientId?: string | null },
+): Promise<boolean> => {
+  const { rowCount } = await client.query(
+    `SELECT 1
+     FROM training_session_tombstones
+     WHERE user_id = $1
+       AND (session_id = $2::uuid OR client_id = $3::uuid)
+     LIMIT 1`,
+    [userId, sessionId ?? null, clientId ?? null],
+  );
+  return !!rowCount;
+};
+
+const sessionDeleted = () => new AppError(410, "session_deleted");
+
+export interface TrainingSessionTombstoneRow {
+  session_id: string;
+  client_id: string | null;
+  deleted_at: Date;
+}
+
+export type DeleteSessionResult = "deleted" | "already_deleted" | "not_found";
+
 const isUniqueViolation = (error: unknown) =>
   typeof error === "object" &&
   error !== null &&
@@ -325,6 +367,9 @@ export const trainingSessionsRepository = {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+      await lockClientId(client, userId, body.clientId);
+      if (await isTombstoned(client, userId, { clientId: body.clientId }))
+        throw sessionDeleted();
       body = await withVisibleReferences(client, userId, body);
       await ensureNoOtherActiveSession(client, userId, body);
       const { rows } = await client.query(
@@ -383,6 +428,13 @@ export const trainingSessionsRepository = {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+      if (
+        await isTombstoned(client, userId, {
+          sessionId,
+          clientId: body.clientId,
+        })
+      )
+        throw sessionDeleted();
       body = await withVisibleReferences(client, userId, body);
       await ensureNoOtherActiveSession(client, userId, body, sessionId);
       const { rowCount } = await client.query(
@@ -405,9 +457,15 @@ export const trainingSessionsRepository = {
         ],
       );
       if (!rowCount) {
+        // A concurrent DELETE may have committed while we waited on the row
+        // lock; READ COMMITTED lets this statement see its tombstone.
+        if (await isTombstoned(client, userId, { sessionId }))
+          throw sessionDeleted();
         await client.query("ROLLBACK");
         return null;
       }
+      // Updates the existing row in place (id, kudos, comments survive);
+      // only exercises/sets are replaced. updated_at is bumped by trigger.
       await replaceChildren(client, sessionId, body);
       const [row] = await loadSessions(client, userId, "AND id = $2", [
         sessionId,
@@ -456,6 +514,8 @@ export const trainingSessionsRepository = {
         [sharedToProfile, sessionId, userId],
       );
       if (!rowCount) {
+        if (await isTombstoned(client, userId, { sessionId }))
+          throw sessionDeleted();
         await client.query("ROLLBACK");
         return null;
       }
@@ -470,6 +530,105 @@ export const trainingSessionsRepository = {
     } finally {
       client.release();
     }
+  },
+
+  /**
+   * Hard-deletes the session (exercises, sets, kudos and comments cascade)
+   * and leaves a tombstone in the same transaction.
+   */
+  remove: async (
+    userId: string,
+    sessionId: string,
+  ): Promise<DeleteSessionResult> => {
+    const pool = requirePool();
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const { rows: found } = await client.query(
+        `SELECT client_id FROM training_sessions
+         WHERE id = $1 AND user_id = $2`,
+        [sessionId, userId],
+      );
+      const clientId = (found[0]?.client_id as string | null) ?? null;
+      // Advisory lock before the row lock — same order as the POST upsert.
+      if (clientId) await lockClientId(client, userId, clientId);
+
+      const { rowCount } = found.length
+        ? await client.query(
+            `DELETE FROM training_sessions
+             WHERE id = $1 AND user_id = $2`,
+            [sessionId, userId],
+          )
+        : { rowCount: 0 };
+      if (!rowCount) {
+        const tombstoned = await isTombstoned(client, userId, { sessionId });
+        await client.query("COMMIT");
+        return tombstoned ? "already_deleted" : "not_found";
+      }
+
+      await client.query(
+        `INSERT INTO training_session_tombstones (session_id, user_id, client_id)
+         VALUES ($1, $2, $3::uuid)
+         ON CONFLICT DO NOTHING`,
+        [sessionId, userId, clientId],
+      );
+      await client.query("COMMIT");
+      return "deleted";
+    } catch (e) {
+      await client.query("ROLLBACK");
+      throw e;
+    } finally {
+      client.release();
+    }
+  },
+
+  /**
+   * Deletes the user's session with this client id (if it reached the server)
+   * and always leaves a `(user, clientId)` tombstone. Idempotent; an existing
+   * tombstone keeps its original deleted_at.
+   */
+  removeByClientId: async (userId: string, clientId: string): Promise<void> => {
+    const pool = requirePool();
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await lockClientId(client, userId, clientId);
+      const { rows } = await client.query(
+        `DELETE FROM training_sessions
+         WHERE user_id = $1 AND client_id = $2::uuid
+         RETURNING id`,
+        [userId, clientId],
+      );
+      const sessionId = (rows[0]?.id as string | undefined) ?? randomUUID();
+      await client.query(
+        `INSERT INTO training_session_tombstones (session_id, user_id, client_id)
+         VALUES ($1, $2, $3::uuid)
+         ON CONFLICT (user_id, client_id) WHERE client_id IS NOT NULL
+         DO NOTHING`,
+        [sessionId, userId, clientId],
+      );
+      await client.query("COMMIT");
+    } catch (e) {
+      await client.query("ROLLBACK");
+      throw e;
+    } finally {
+      client.release();
+    }
+  },
+
+  deletedSince: async (
+    userId: string,
+    since: Date,
+  ): Promise<TrainingSessionTombstoneRow[]> => {
+    const pool = requirePool();
+    const { rows } = await pool.query(
+      `SELECT session_id, client_id, deleted_at
+       FROM training_session_tombstones
+       WHERE user_id = $1 AND deleted_at > $2
+       ORDER BY deleted_at, session_id`,
+      [userId, since],
+    );
+    return rows as TrainingSessionTombstoneRow[];
   },
 
   history: async (

@@ -4,6 +4,8 @@ import { firstZodMessage, uuidParamsSchema } from "../../common/schemas.js";
 import type { AuthRequest } from "../../middleware/auth.js";
 import {
   decodeHistoryCursor,
+  sessionClientIdParamsSchema,
+  sessionIdParamsSchema,
   sharedToProfileBodySchema,
   trainingSessionBodySchema,
   trainingSessionHistoryQuerySchema,
@@ -66,6 +68,35 @@ export const trainingSessionsController = {
       cursor: decodeHistoryCursor(parsed.data.cursor),
     });
     res.status(200).json(page);
+  }),
+
+  remove: asyncHandler(async (req: Request, res: Response) => {
+    const parsedParams = sessionIdParamsSchema.safeParse(req.params);
+    if (!parsedParams.success) {
+      res
+        .status(400)
+        .json({ error: firstZodMessage(parsedParams.error.issues) });
+      return;
+    }
+    const userId = (req as AuthRequest).auth.sub;
+    await trainingSessionsService.remove(userId, parsedParams.data.id);
+    res.status(204).end();
+  }),
+
+  removeByClientId: asyncHandler(async (req: Request, res: Response) => {
+    const parsedParams = sessionClientIdParamsSchema.safeParse(req.params);
+    if (!parsedParams.success) {
+      res
+        .status(400)
+        .json({ error: firstZodMessage(parsedParams.error.issues) });
+      return;
+    }
+    const userId = (req as AuthRequest).auth.sub;
+    await trainingSessionsService.removeByClientId(
+      userId,
+      parsedParams.data.clientId,
+    );
+    res.status(204).end();
   }),
 
   setSharedToProfile: asyncHandler(async (req: Request, res: Response) => {

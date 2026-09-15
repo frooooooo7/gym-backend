@@ -84,6 +84,15 @@ export const trainingSessionsService = {
     const visibleRows = hasMore ? rows.slice(0, filters.limit) : rows;
     const items = visibleRows.map(formatSession);
     const last = items.at(-1);
+    // Deletions are only reported with an incremental sync, all at once on the
+    // first page (no cursor) — later pages carry `deleted: []`.
+    const tombstones =
+      filters.updatedSince && !filters.cursor
+        ? await trainingSessionsRepository.deletedSince(
+            userId,
+            filters.updatedSince,
+          )
+        : [];
     return {
       items,
       nextCursor:
@@ -91,7 +100,22 @@ export const trainingSessionsService = {
           ? encodeHistoryCursor(new Date(last.startedAt), last.id)
           : null,
       hasMore,
+      deleted: tombstones.map((row) => ({
+        id: row.session_id,
+        clientId: row.client_id,
+        deletedAt: row.deleted_at,
+      })),
     };
+  },
+
+  remove: async (userId: string, sessionId: string) => {
+    const result = await trainingSessionsRepository.remove(userId, sessionId);
+    if (result === "not_found")
+      throw new AppError(404, "not_found_or_not_yours");
+  },
+
+  removeByClientId: async (userId: string, clientId: string) => {
+    await trainingSessionsRepository.removeByClientId(userId, clientId);
   },
 
   setSharedToProfile: async (

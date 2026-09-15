@@ -1,6 +1,9 @@
 services:
   postgres:
-    image: postgis/postgis:16-3.4-alpine
+    # Plain PostgreSQL: the API needs only the contrib extensions pgcrypto and
+    # pg_trgm, both bundled with the official image. (Previously
+    # postgis/postgis:16-3.4-alpine — see README "Migrating from the PostGIS image".)
+    image: postgres:16-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: gym
@@ -30,13 +33,17 @@ services:
       PORT: "3000"
       DATABASE_URL: postgresql://gym:${POSTGRES_PASSWORD:-gym}@postgres:5432/gym
       JWT_SECRET: ${JWT_SECRET:-}
-      # Required when NODE_ENV=production (comma-separated). Example Flutter web: http://localhost:65425
+      # Recommended when NODE_ENV=production (comma-separated). Example Flutter web: http://localhost:65425
       CORS_ORIGIN: ${CORS_ORIGIN:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      # Exercise images and avatars survive image rebuilds / container recreation.
+      - uploads_data:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget --quiet --spider http://localhost:3000/health || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -44,3 +51,4 @@ services:
 
 volumes:
   postgres_data:
+  uploads_data:

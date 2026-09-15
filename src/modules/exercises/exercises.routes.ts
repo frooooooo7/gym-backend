@@ -11,7 +11,9 @@ import { exerciseImageUpload } from "./exercises.image-upload.js";
 
 export const exercisesRouter = Router();
 
-exercisesRouter.use(exercisesLimiter);
+// Scoped to /exercises: routers are mounted without a path prefix, so a bare
+// `use(limiter)` would count every request that merely passes through here.
+exercisesRouter.use("/exercises", exercisesLimiter);
 
 const handleExerciseImageUpload = (
   req: Request,

@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit",
     "migrate": "tsx src/db/migrate.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "smoke": "node scripts/smoke/run-all.mjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

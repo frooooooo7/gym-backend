@@ -1,6 +1,7 @@
 import path from "node:path";
 
 import { AppError } from "../../common/errors.js";
+import { logger, serializeError } from "../../common/logger.js";
 import { isForeignKeyViolation } from "../../common/pg-errors.js";
 import { diskPathFromPublicUrl, safeUnlink } from "../../common/uploads.js";
 import {
@@ -169,7 +170,7 @@ const removeManagedAvatar = async (avatarUrl: string | null): Promise<void> => {
       diskPathFromPublicUrl(`${AVATARS_PUBLIC_PREFIX}${fileName}`),
     );
   } catch (e: unknown) {
-    console.warn("[profile] failed to remove avatar file", avatarUrl, e);
+    logger.warn("[profile] failed to remove avatar file", { avatarUrl, error: serializeError(e) });
   }
 };
 
@@ -177,7 +178,7 @@ const removeUploadedFile = async (diskPath: string): Promise<void> => {
   try {
     await safeUnlink(diskPath);
   } catch (e: unknown) {
-    console.warn("[profile] failed to remove uploaded file", diskPath, e);
+    logger.warn("[profile] failed to remove uploaded file", { diskPath, error: serializeError(e) });
   }
 };
 

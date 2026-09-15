@@ -529,3 +529,84 @@ describe("DELETE /auth/me", () => {
     expect(users.has(rlUser)).toBe(true);
   });
 });
+
+describe("POST /auth/delete-account (alias of DELETE /auth/me)", () => {
+  let uid = "";
+  beforeEach(() => {
+    uid = randomUUID();
+  });
+
+  it.each(["/auth/delete-account", "/api/v1/auth/delete-account"])(
+    "%s: 401 without auth",
+    async (path) => {
+      const res = await request(app).post(path).send({ password: OLD_PASSWORD });
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe("unauthorized");
+    },
+  );
+
+  it.each(["/auth/delete-account", "/api/v1/auth/delete-account"])(
+    "%s: deletes the account and revokes the token",
+    async (path) => {
+      seedUser({ id: uid });
+      const token = tokenFor(uid, 0);
+      const res = await request(app).post(path).set(bearer(token)).send({ password: OLD_PASSWORD });
+      expect(res.status).toBe(204);
+      expect(res.text).toBe("");
+      expect(users.has(uid)).toBe(false);
+      expect(sqlLog().some((s) => s === "COMMIT")).toBe(true);
+
+      const after = await request(app).get("/auth/me").set(bearer(token));
+      expect(after.status).toBe(401);
+      expect(after.body.error).toBe("token_revoked");
+    },
+  );
+
+  it("401 invalid_credentials for a wrong password, nothing deleted", async () => {
+    seedUser({ id: uid });
+    const res = await request(app)
+      .post("/auth/delete-account")
+      .set(bearer(tokenFor(uid, 0)))
+      .send({ password: "WrongPassw0rd" });
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe("invalid_credentials");
+    expect(users.has(uid)).toBe(true);
+  });
+
+  it.each([[{}], [{ password: "" }], [{ password: 123 }]])(
+    "400 missing_fields for body %j",
+    async (body) => {
+      seedUser({ id: uid });
+      const res = await request(app).post("/auth/delete-account").set(bearer(tokenFor(uid, 0))).send(body);
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe("missing_fields");
+    },
+  );
+
+  it("400 missing_fields without any body", async () => {
+    seedUser({ id: uid });
+    const res = await request(app).post("/auth/delete-account").set(bearer(tokenFor(uid, 0)));
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("missing_fields");
+  });
+
+  it("shares the 5-attempt limiter counter with DELETE /auth/me", async () => {
+    seedUser({ id: uid, email: `rl-alias-${uid}@gym.com` });
+    const token = tokenFor(uid, 0);
+    for (let i = 0; i < 3; i++) {
+      const res = await request(app).delete("/auth/me").set(bearer(token)).send({});
+      expect(res.status).toBe(400);
+    }
+    for (let i = 0; i < 2; i++) {
+      const res = await request(app).post("/auth/delete-account").set(bearer(token)).send({});
+      expect(res.status).toBe(400);
+    }
+    const limited = await request(app)
+      .post("/auth/delete-account")
+      .set(bearer(token))
+      .send({ password: OLD_PASSWORD });
+    expect(limited.status).toBe(429);
+    expect(limited.body.error).toBe("too_many_requests");
+    expect(users.has(uid)).toBe(true);
+  });
+});

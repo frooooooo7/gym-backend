@@ -2,6 +2,7 @@ import path from "node:path";
 import jwt from "jsonwebtoken";
 import { comparePassword, hashPassword } from "../../common/bcrypt-worker.js";
 import { AppError } from "../../common/errors.js";
+import { logger, serializeError } from "../../common/logger.js";
 import { diskPathFromPublicUrl, safeUnlink } from "../../common/uploads.js";
 import { env } from "../../config/env.js";
 import type {
@@ -54,7 +55,7 @@ const removeManagedUpload = async (
   try {
     await safeUnlink(diskPathFromPublicUrl(`${prefix}${fileName}`));
   } catch (e: unknown) {
-    console.warn("[auth] failed to remove upload of deleted account", publicUrl, e);
+    logger.warn("[auth] failed to remove upload of deleted account", { publicUrl, error: serializeError(e) });
   }
 };
 

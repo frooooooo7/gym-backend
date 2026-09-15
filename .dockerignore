@@ -1,9 +1,15 @@
 node_modules
 dist
 .git
+.github
 .env
 .env.*
 !.env.example
 *.log
 .DS_Store
 README.md
+uploads
+scripts
+coverage
+.cursor
+.cursor_backup

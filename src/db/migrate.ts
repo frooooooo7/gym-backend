@@ -1,3 +1,4 @@
+import { logger, serializeError } from "../common/logger.js";
 import { getPool } from "./pool.js";
 
 interface Migration {
@@ -427,7 +428,7 @@ const ADVISORY_LOCK_ID = 3_742_116_919;
 export const runMigrations = async (): Promise<void> => {
   const pool = getPool();
   if (!pool) {
-    console.warn("[migrate] DATABASE_URL not set — skipping migrations");
+    logger.warn("[migrate] DATABASE_URL not set — skipping migrations");
     return;
   }
 
@@ -457,14 +458,14 @@ export const runMigrations = async (): Promise<void> => {
           migration.name,
         ]);
         await client.query("COMMIT");
-        console.log(`[migrate] applied ${migration.name}`);
+        logger.info(`[migrate] applied ${migration.name}`);
       } catch (err) {
         await client.query("ROLLBACK");
         throw err;
       }
     }
 
-    console.log("[migrate] up to date");
+    logger.info("[migrate] up to date");
   } finally {
     try {
       await client.query("SELECT pg_advisory_unlock($1)", [ADVISORY_LOCK_ID]);
@@ -479,7 +480,7 @@ if (process.argv[1]?.includes("migrate")) {
   const pool = getPool();
   runMigrations()
     .catch((err) => {
-      console.error("[migrate] error", err);
+      logger.error("[migrate] error", { error: serializeError(err) });
       process.exit(1);
     })
     .finally(() => pool?.end());

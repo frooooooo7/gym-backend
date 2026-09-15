@@ -27,3 +27,11 @@ authRouter.delete(
   deleteAccountLimiter,
   authController.deleteAccount,
 );
+// Same handler and the same limiter counter as DELETE /auth/me — for clients
+// behind proxies that drop DELETE request bodies.
+authRouter.post(
+  "/auth/delete-account",
+  requireAuth,
+  deleteAccountLimiter,
+  authController.deleteAccount,
+);

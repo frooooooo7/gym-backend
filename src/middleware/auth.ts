@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import { isAppError } from "../common/errors.js";
+import { logger, serializeError } from "../common/logger.js";
 import { env } from "../config/env.js";
 import { isTokenVersionCurrent } from "../modules/auth/token-version.store.js";
 
@@ -78,7 +79,7 @@ export const requireAuth = (
         next(err);
         return;
       }
-      console.error("[auth] token version check failed", err);
+      logger.error("[auth] token version check failed", { error: serializeError(err) });
       res.status(503).json({
         error: "database_unavailable",
         message: "database_unavailable",

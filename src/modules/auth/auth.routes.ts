@@ -1,6 +1,11 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/auth.js";
-import { loginLimiter, registerLimiter } from "../../middleware/rate-limit.js";
+import {
+  changePasswordLimiter,
+  deleteAccountLimiter,
+  loginLimiter,
+  registerLimiter,
+} from "../../middleware/rate-limit.js";
 import { authController } from "./auth.controller.js";
 
 export const authRouter = Router();
@@ -8,3 +13,17 @@ export const authRouter = Router();
 authRouter.post("/auth/register", registerLimiter, authController.register);
 authRouter.post("/auth/login", loginLimiter, authController.login);
 authRouter.get("/auth/me", requireAuth, authController.me);
+
+authRouter.post(
+  "/auth/change-password",
+  requireAuth,
+  changePasswordLimiter,
+  authController.changePassword,
+);
+authRouter.post("/auth/logout-all", requireAuth, authController.logoutAll);
+authRouter.delete(
+  "/auth/me",
+  requireAuth,
+  deleteAccountLimiter,
+  authController.deleteAccount,
+);

@@ -281,3 +281,29 @@ User list item (same as `/profile/followers`):
 | 404 | `comment_not_found` | comment missing or not on that post |
 | 429 | `too_many_requests` | comment rate limit exceeded |
 | 503 | `database_unavailable` | no database configured |
+
+## Account & security
+
+All endpoints below require `Authorization: Bearer <jwt>`.
+
+| Method & path | Body | Success | Errors |
+|---|---|---|---|
+| `POST /auth/change-password` | `{ "currentPassword": string, "newPassword": string }` | `200 { token, user }` (same shape as login) | `401 invalid_credentials` (wrong current password), `400 password_too_short` / `400 password_too_weak` (same rules as registration), `400 missing_fields`, `400 password_unchanged`, `429 too_many_requests` (10 failed attempts / user / 15 min) |
+| `POST /auth/logout-all` | — | `200 { token, user }` | — |
+| `DELETE /auth/me` | `{ "password": string }` | `204` (empty) | `401 invalid_credentials`, `400 missing_fields`, `429 too_many_requests` (5 attempts / user / 15 min) |
+
+`POST|DELETE /posts/:sessionId/kudos` are limited to 120 requests per user per minute (`429 too_many_requests`).
+
+### Token revocation (`token_revoked`)
+
+- Every JWT carries a `tv` claim: the user's `users.token_version` at issue time (tokens issued before this existed have no `tv`, which counts as `0`).
+- `change-password` and `logout-all` increment `token_version` and return a **new token** for the calling device. Every other token for that user, including the one used to make the call, then gets `401 { "error": "token_revoked" }` on any authenticated endpoint. The client should swap in the returned token right away. On `token_revoked`, sign the user out locally (don't retry).
+- A token for a deleted account also gets `401 token_revoked`.
+- Other auth errors are unchanged: `401 unauthorized` (missing header), `401 invalid_token` (bad signature / expired). If the version can't be checked because the database is down, the API returns `503 database_unavailable`.
+- The version is cached in memory per API instance for up to 30 s. Revocation is immediate on the instance that handled the request. With several instances, the others pick it up within that TTL.
+
+### Account deletion scope
+
+`DELETE /auth/me` removes, in one transaction: the user, their training plans, their custom exercises, their training sessions (with sets, kudos and comments on them), their tombstones, favourites, follows (both directions), and the kudos and comments they left on other people's posts. Afterwards, the avatar file and the image files of the deleted custom exercises are removed from disk (best effort).
+
+Exception: another user's plan can only use system exercises or its owner's own custom exercises, so it can't normally reference someone else's. If one does anyway (legacy data), that custom exercise is kept with `created_by = NULL`, and so is its image. Other users' session history keeps its exercise snapshots (name, muscles, category); `exercise_id` becomes `NULL`.

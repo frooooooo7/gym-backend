@@ -47,6 +47,37 @@ export const followLimiter = rateLimit({
   keyGenerator: userOrIpKey,
 });
 
+/** 120 kudos give/remove requests per authenticated user per minute (falls back to IP) */
+export const kudosLimiter = rateLimit({
+  windowMs: 60 * 1_000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: json429,
+  keyGenerator: userOrIpKey,
+});
+
+/** Like loginLimiter, but per user: 10 failed attempts per 15 min on /auth/change-password */
+export const changePasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1_000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  message: json429,
+  keyGenerator: userOrIpKey,
+});
+
+/** 5 attempts per authenticated user per 15 min on DELETE /auth/me */
+export const deleteAccountLimiter = rateLimit({
+  windowMs: 15 * 60 * 1_000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: json429,
+  keyGenerator: userOrIpKey,
+});
+
 /** 30 new comments per authenticated user per minute (falls back to IP) */
 export const commentLimiter = rateLimit({
   windowMs: 60 * 1_000,

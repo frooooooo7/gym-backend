@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/auth.js";
-import { commentLimiter } from "../../middleware/rate-limit.js";
+import { commentLimiter, kudosLimiter } from "../../middleware/rate-limit.js";
 import { validateRequest } from "../../middleware/validation.js";
 import { feedController } from "./feed.controller.js";
 import {
@@ -47,6 +47,7 @@ feedRouter.get(
 feedRouter.post(
   "/posts/:sessionId/kudos",
   requireAuth,
+  kudosLimiter,
   validateRequest({ params: postParamsSchema }),
   feedController.giveKudo,
 );
@@ -54,6 +55,7 @@ feedRouter.post(
 feedRouter.delete(
   "/posts/:sessionId/kudos",
   requireAuth,
+  kudosLimiter,
   validateRequest({ params: postParamsSchema }),
   feedController.removeKudo,
 );

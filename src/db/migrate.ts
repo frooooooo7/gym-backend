@@ -412,6 +412,14 @@ const MIGRATIONS: Migration[] = [
         ON training_session_tombstones (user_id, deleted_at);
     `,
   },
+  {
+    // Bumped on change-password / logout-all; JWTs carry it as the "tv"
+    // claim and requireAuth rejects tokens whose "tv" is stale.
+    name: "015_users_token_version",
+    sql: `
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0;
+    `,
+  },
 ];
 
 const ADVISORY_LOCK_ID = 3_742_116_919;

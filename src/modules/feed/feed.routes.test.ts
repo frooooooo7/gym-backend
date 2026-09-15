@@ -958,3 +958,29 @@ describe("GET /users/suggested", () => {
     expect(res.status).toBe(401);
   });
 });
+
+describe("kudos rate limit", () => {
+  beforeEach(resetDbMocks);
+
+  it("returns 429 too_many_requests after 120 kudos requests per user per minute", async () => {
+    whenSqlContains({});
+    const limitedUser = "dddddddd-0000-0000-0000-00000000000d";
+    for (let i = 0; i < 120; i++) {
+      const res = await request(app)
+        [i % 2 === 0 ? "post" : "delete"](`/posts/${SESSION_ID}/kudos`)
+        .set(authHeaders(limitedUser));
+      expect(res.status).not.toBe(429);
+    }
+    const limited = await request(app)
+      .post(`/posts/${SESSION_ID}/kudos`)
+      .set(authHeaders(limitedUser));
+    expect(limited.status).toBe(429);
+    expect(limited.body).toEqual({ error: "too_many_requests" });
+
+    // keyed per user — others are unaffected
+    const other = await request(app)
+      .delete(`/posts/${SESSION_ID}/kudos`)
+      .set(authHeaders(THIRD_USER_ID));
+    expect(other.status).not.toBe(429);
+  });
+});

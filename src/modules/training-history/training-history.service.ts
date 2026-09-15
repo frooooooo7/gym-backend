@@ -5,10 +5,30 @@ import {
   type TrainingHistorySetRow,
 } from "./training-history.repository.js";
 
-const toNumber = (value: string | number | null): number | null =>
-  value === null ? null : Number(value);
+/** Numeric text (comma or dot decimals) → number; unparsable → null. */
+const toNumber = (value: string | number | null): number | null => {
+  if (value === null) return null;
+  const parsed =
+    typeof value === "number" ? value : Number(value.trim().replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : null;
+};
 
-const mapSet = (set: TrainingHistorySetRow) => ({
+export const groupSetsByExerciseId = (
+  sets: TrainingHistorySetRow[],
+): Map<string, TrainingHistorySetRow[]> => {
+  const setsByExerciseId = new Map<string, TrainingHistorySetRow[]>();
+  for (const set of sets) {
+    const existing = setsByExerciseId.get(set.session_exercise_id);
+    if (existing) {
+      existing.push(set);
+    } else {
+      setsByExerciseId.set(set.session_exercise_id, [set]);
+    }
+  }
+  return setsByExerciseId;
+};
+
+export const mapSet = (set: TrainingHistorySetRow) => ({
   setIndex: set.set_index,
   planned: {
     weightKg: toNumber(set.planned_weight_kg),
@@ -94,15 +114,7 @@ export const trainingHistoryService = {
       );
     }
     const sets = await trainingHistoryRepository.findSets(exercises.map((e) => e.id));
-    const setsByExerciseId = new Map<string, TrainingHistorySetRow[]>();
-    for (const set of sets) {
-      const existing = setsByExerciseId.get(set.session_exercise_id);
-      if (existing) {
-        existing.push(set);
-      } else {
-        setsByExerciseId.set(set.session_exercise_id, [set]);
-      }
-    }
+    const setsByExerciseId = groupSetsByExerciseId(sets);
 
     return {
       id: session.id,

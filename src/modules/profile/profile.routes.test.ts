@@ -352,11 +352,41 @@ describe("profile routes", () => {
       detail: "6 ćwiczeń",
       kudosCount: 0,
       commentCount: 0,
+      hasKudoed: false,
     });
     expect(res.body[0].stats).toEqual([
       { label: "Czas", value: "58 min" },
       { label: "Ćwiczenia", value: "6 ćwiczeń" },
       { label: "Objętość", value: "6450 kg" },
+    ]);
+  });
+
+  it("GET /profile/activities returns real kudos/comment counts (batched)", async () => {
+    whenSqlContains({
+      "FROM training_sessions ts": {
+        rows: [activityRow, { ...activityRow, id: "f1000000-0000-4000-8000-000000000002" }],
+      },
+      "AS has_kudoed": {
+        rows: [
+          { session_id: SESSION_ID, kudos_count: 3, comment_count: 2, has_kudoed: true },
+        ],
+      },
+    });
+
+    const res = await request(app)
+      .get("/profile/activities?limit=5")
+      .set(authHeaders());
+
+    expect(res.status).toBe(200);
+    expect(res.body[0]).toMatchObject({ kudosCount: 3, commentCount: 2, hasKudoed: true });
+    expect(res.body[1]).toMatchObject({ kudosCount: 0, commentCount: 0, hasKudoed: false });
+    const socialCalls = mockQuery.mock.calls.filter((call) =>
+      String(call[0]).includes("AS has_kudoed"),
+    );
+    expect(socialCalls).toHaveLength(1);
+    expect(socialCalls[0][1]).toEqual([
+      [SESSION_ID, "f1000000-0000-4000-8000-000000000002"],
+      USER_ID,
     ]);
   });
 
@@ -415,6 +445,27 @@ describe("profile routes", () => {
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(1);
     expect(res.body[0].id).toBe(SESSION_ID);
+    expect(res.body[0].hasKudoed).toBe(false);
+  });
+
+  it("GET /users/:userId/activities resolves hasKudoed for the viewer", async () => {
+    whenSqlContains({
+      "FROM users": { rows: [{ ...profileRow, id: OTHER_USER_ID }] },
+      "FROM training_sessions ts": { rows: [activityRow] },
+      "AS has_kudoed": {
+        rows: [
+          { session_id: SESSION_ID, kudos_count: 1, comment_count: 4, has_kudoed: true },
+        ],
+      },
+    });
+
+    const res = await request(app)
+      .get(`/users/${OTHER_USER_ID}/activities?limit=3`)
+      .set(authHeaders());
+
+    expect(res.status).toBe(200);
+    expect(res.body[0]).toMatchObject({ kudosCount: 1, commentCount: 4, hasKudoed: true });
+    expect(findCall("AS has_kudoed")?.[1]).toEqual([[SESSION_ID], USER_ID]);
   });
 
   it("GET /users/:userId/activities returns 401 without auth", async () => {

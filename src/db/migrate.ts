@@ -341,6 +341,54 @@ const MIGRATIONS: Migration[] = [
       $$;
     `,
   },
+  {
+    name: "013_social_feed",
+    sql: `
+      CREATE TABLE IF NOT EXISTS session_kudos (
+        session_id UUID        NOT NULL REFERENCES training_sessions(id) ON DELETE CASCADE,
+        user_id    UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (session_id, user_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS session_kudos_user_idx
+        ON session_kudos (user_id);
+
+      -- "recent kudos" (LIMIT 3 per post) and the kudos list, newest first.
+      CREATE INDEX IF NOT EXISTS session_kudos_session_created_idx
+        ON session_kudos (session_id, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS session_comments (
+        id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        session_id UUID        NOT NULL REFERENCES training_sessions(id) ON DELETE CASCADE,
+        user_id    UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        body       TEXT        NOT NULL CHECK (char_length(body) BETWEEN 1 AND 500),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+
+      CREATE INDEX IF NOT EXISTS session_comments_session_created_idx
+        ON session_comments (session_id, created_at, id);
+
+      -- ON DELETE CASCADE from users would otherwise seq-scan comments.
+      CREATE INDEX IF NOT EXISTS session_comments_user_idx
+        ON session_comments (user_id);
+
+      CREATE OR REPLACE TRIGGER session_comments_set_updated_at
+        BEFORE UPDATE ON session_comments
+        FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+      -- Feed: globally ordered shared posts; filtered by the author set.
+      CREATE INDEX IF NOT EXISTS training_sessions_feed_idx
+        ON training_sessions (started_at DESC, id DESC)
+        WHERE status = 'completed' AND shared_to_profile = true;
+
+      -- Feed (few followings / deep pages): per-author scan with id tie-break.
+      CREATE INDEX IF NOT EXISTS training_sessions_user_shared_started_id_idx
+        ON training_sessions (user_id, started_at DESC, id DESC)
+        WHERE status = 'completed' AND shared_to_profile = true;
+    `,
+  },
 ];
 
 const ADVISORY_LOCK_ID = 3_742_116_919;

@@ -1,7 +1,12 @@
 import path from "node:path";
 
 import { AppError } from "../../common/errors.js";
+import { isForeignKeyViolation } from "../../common/pg-errors.js";
 import { diskPathFromPublicUrl, safeUnlink } from "../../common/uploads.js";
+import {
+  feedRepository,
+  type PostSocialRow,
+} from "../feed/feed.repository.js";
 import { AVATARS_PUBLIC_PREFIX } from "./profile.avatar-upload.js";
 import {
   profileRepository,
@@ -85,7 +90,7 @@ const formatExerciseDetail = (count: number): string => {
   return `${count} ćwiczeń`;
 };
 
-const formatFollowingUser = (row: FollowingUserRow) => ({
+export const formatFollowingUser = (row: FollowingUserRow) => ({
   id: row.id,
   firstName: row.first_name,
   lastName: row.last_name,
@@ -121,7 +126,10 @@ const formatProfile = (
   isFollowedBy: isOwnProfile ? false : relationship.is_followed_by,
 });
 
-const formatActivity = (row: ProfileActivityRow) => ({
+const formatActivity = (
+  row: ProfileActivityRow,
+  social: PostSocialRow | undefined,
+) => ({
   id: row.id,
   kind: "strength" as const,
   title: row.plan_name,
@@ -134,9 +142,23 @@ const formatActivity = (row: ProfileActivityRow) => ({
     { label: "Ćwiczenia", value: formatExerciseDetail(row.exercises_count) },
     { label: "Objętość", value: formatVolume(row.volume_kg) },
   ],
-  kudosCount: 0,
-  commentCount: 0,
+  kudosCount: social?.kudos_count ?? 0,
+  commentCount: social?.comment_count ?? 0,
+  hasKudoed: social?.has_kudoed === true,
 });
+
+/** Formats activities with kudos/comment counts loaded in one batched query. */
+const formatActivities = async (
+  viewerId: string,
+  rows: ProfileActivityRow[],
+) => {
+  const social = await feedRepository.findSocialStats(
+    rows.map((row) => row.id),
+    viewerId,
+  );
+  const socialById = new Map(social.map((s) => [s.session_id, s]));
+  return rows.map((row) => formatActivity(row, socialById.get(row.id)));
+};
 
 /** Best-effort removal; only files we manage under /uploads/avatars/ are touched. */
 const removeManagedAvatar = async (avatarUrl: string | null): Promise<void> => {
@@ -166,10 +188,6 @@ const ensureUserExists = async (userId: string): Promise<void> => {
   }
 };
 
-const isForeignKeyViolation = (error: unknown): boolean =>
-  typeof error === "object" &&
-  error !== null &&
-  (error as { code?: unknown }).code === "23503";
 
 export const profileService = {
   getOwnProfile: async (userId: string) => {
@@ -334,11 +352,11 @@ export const profileService = {
 
   getRecentActivities: async (userId: string, limit: number) => {
     const rows = await profileRepository.listRecentActivities(userId, limit);
-    return rows.map(formatActivity);
+    return formatActivities(userId, rows);
   },
 
   getUserActivities: async (
-    _viewerId: string,
+    viewerId: string,
     targetUserId: string,
     limit: number,
   ) => {
@@ -349,6 +367,6 @@ export const profileService = {
     if (!row) {
       throw new AppError(404, "user_not_found");
     }
-    return rows.map(formatActivity);
+    return formatActivities(viewerId, rows);
   },
 };

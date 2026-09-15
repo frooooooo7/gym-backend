@@ -1,4 +1,5 @@
 import { requirePool } from "../../db/require-pool.js";
+import { setVolumeSql } from "../../db/sql-fragments.js";
 
 export interface TrainingHistoryListRow {
   id: string;
@@ -36,6 +37,7 @@ export interface TrainingHistoryExerciseRow {
   exercise_id: string;
   exercise_name: string;
   exercise_muscles: string[];
+  exercise_category: string;
   exercise_image_url: string | null;
   position: number;
 }
@@ -100,15 +102,7 @@ const BASE_LIST_SELECT = `
       COUNT(*)::int AS completed_sets_count,
       -- actual_weight / actual_reps są TEXT-em (klient zapisuje surowy input),
       -- więc do sumy trafiają tylko wartości, które faktycznie są liczbą.
-      COALESCE(SUM(
-        CASE
-          WHEN replace(btrim(tss.actual_weight), ',', '.') ~ '^[0-9]+(\\.[0-9]+)?$'
-           AND btrim(tss.actual_reps) ~ '^[0-9]+$'
-          THEN replace(btrim(tss.actual_weight), ',', '.')::numeric
-               * btrim(tss.actual_reps)::numeric
-          ELSE 0
-        END
-      ), 0)::float8 AS total_volume_kg
+      COALESCE(SUM(${setVolumeSql("tss.actual_weight", "tss.actual_reps")}), 0)::float8 AS total_volume_kg
     FROM training_session_exercises tse
     JOIN training_session_sets tss ON tss.session_exercise_id = tse.id
     WHERE tse.session_id = ts.id AND tss.completed = true
@@ -215,6 +209,7 @@ export const trainingHistoryRepository = {
         tse.exercise_id,
         tse.exercise_name,
         tse.exercise_muscles,
+        tse.exercise_category,
         tse.exercise_image_url,
         tse.position
       FROM training_session_exercises tse

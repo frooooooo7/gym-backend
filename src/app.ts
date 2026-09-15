@@ -14,6 +14,7 @@ import { trainingPlansRouter } from "./modules/training-plans/training-plans.rou
 import { trainingSessionsRouter } from "./modules/training-sessions/training-sessions.routes.js";
 import { profileRouter } from "./modules/profile/profile.routes.js";
 import { ensureAvatarsDir } from "./modules/profile/profile.avatar-upload.js";
+import { feedRouter } from "./modules/feed/feed.routes.js";
 
 export const createApp = () => {
   const app = express();
@@ -83,6 +84,7 @@ export const createApp = () => {
   app.use(trainingHistoryRouter);
   app.use(trainingSessionsRouter);
   app.use(profileRouter);
+  app.use(feedRouter);
 
   app.use((_req, res) => {
     res.status(404).json({ error: "not_found", message: "Route not found" });

@@ -31,6 +31,12 @@ export const exercisesLimiter = rateLimit({
   message: json429,
 });
 
+/** Keys by authenticated user (mount after requireAuth), falls back to IP. */
+const userOrIpKey = (req: Request): string => {
+  const sub = (req as Request & { auth?: { sub?: string } }).auth?.sub;
+  return sub ? `user:${sub}` : ipKeyGenerator(req.ip ?? "");
+};
+
 /** 60 follow/unfollow requests per authenticated user per minute (falls back to IP) */
 export const followLimiter = rateLimit({
   windowMs: 60 * 1_000,
@@ -38,8 +44,15 @@ export const followLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: json429,
-  keyGenerator: (req) => {
-    const sub = (req as Request & { auth?: { sub?: string } }).auth?.sub;
-    return sub ? `user:${sub}` : ipKeyGenerator(req.ip ?? "");
-  },
+  keyGenerator: userOrIpKey,
+});
+
+/** 30 new comments per authenticated user per minute (falls back to IP) */
+export const commentLimiter = rateLimit({
+  windowMs: 60 * 1_000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: json429,
+  keyGenerator: userOrIpKey,
 });

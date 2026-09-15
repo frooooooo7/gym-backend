@@ -1,4 +1,8 @@
 import { requirePool } from "../../db/require-pool.js";
+import {
+  sessionDurationSecSql,
+  setVolumeSql,
+} from "../../db/sql-fragments.js";
 
 export interface ProfileUserRow {
   id: string;
@@ -265,10 +269,7 @@ export const profileRepository = {
          ts.id,
          ts.started_at,
          ts.finished_at,
-         COALESCE(
-           GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (COALESCE(ts.finished_at, now()) - ts.started_at)))::int),
-           0
-         ) AS duration_sec,
+         ${sessionDurationSecSql("ts")} AS duration_sec,
          ts.plan_name,
          COALESCE(ec.exercises_count, 0) AS exercises_count,
          COALESCE(sc.completed_sets_count, 0) AS completed_sets_count,
@@ -282,10 +283,7 @@ export const profileRepository = {
        LEFT JOIN LATERAL (
          SELECT
            COUNT(*)::int AS completed_sets_count,
-           COALESCE(SUM(
-             COALESCE(NULLIF(regexp_replace(tss.actual_weight, '[^0-9.,]', '', 'g'), ''), '0')::numeric
-             * COALESCE(NULLIF(regexp_replace(tss.actual_reps, '[^0-9]', '', 'g'), ''), '0')::numeric
-           ), 0)::float AS volume_kg
+           COALESCE(SUM(${setVolumeSql("tss.actual_weight", "tss.actual_reps")}), 0)::float8 AS volume_kg
          FROM training_session_exercises tse
          JOIN training_session_sets tss ON tss.session_exercise_id = tse.id
          WHERE tse.session_id = ts.id AND tss.completed = true

@@ -1,7 +1,5 @@
-import fs from "node:fs/promises";
-import path from "node:path";
-
 import { AppError } from "../../common/errors.js";
+import { diskPathFromPublicUrl, safeUnlink } from "../../common/uploads.js";
 import type { ListQueryInput, UpsertBodyInput } from "./exercises.schemas.js";
 import {
   exercisesRepository,
@@ -9,18 +7,6 @@ import {
   type ExerciseRowSansFavourite,
   type OwnedExerciseImageMeta,
 } from "./exercises.repository.js";
-
-const diskPathFromPublicUrl = (publicUrl: string): string =>
-  path.join(process.cwd(), ...publicUrl.replace(/^\/+/, "").split("/"));
-
-const safeUnlink = async (absPath: string): Promise<void> => {
-  try {
-    await fs.unlink(absPath);
-  } catch (e: unknown) {
-    const code = (e as NodeJS.ErrnoException).code;
-    if (code !== "ENOENT") throw e;
-  }
-};
 
 const formatExercise = (row: ExerciseRow, userId?: string) => {
   const isMine = userId ? row.created_by === userId : false;

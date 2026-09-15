@@ -13,6 +13,7 @@ import { trainingHistoryRouter } from "./modules/training-history/training-histo
 import { trainingPlansRouter } from "./modules/training-plans/training-plans.routes.js";
 import { trainingSessionsRouter } from "./modules/training-sessions/training-sessions.routes.js";
 import { profileRouter } from "./modules/profile/profile.routes.js";
+import { ensureAvatarsDir } from "./modules/profile/profile.avatar-upload.js";
 
 export const createApp = () => {
   const app = express();
@@ -30,6 +31,18 @@ export const createApp = () => {
   app.use(
     "/uploads/exercise-images",
     express.static(exerciseImagesDir, {
+      maxAge: "365d",
+      immutable: true,
+      etag: false,
+      lastModified: false,
+    }),
+  );
+
+  ensureAvatarsDir();
+  const avatarsDir = path.join(process.cwd(), "uploads", "avatars");
+  app.use(
+    "/uploads/avatars",
+    express.static(avatarsDir, {
       maxAge: "365d",
       immutable: true,
       etag: false,

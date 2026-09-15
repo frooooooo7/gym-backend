@@ -1,13 +1,29 @@
 import { z } from "zod";
 import { postgresUuid } from "../../common/schemas.js";
 
-export const profileUpdateSchema = z.object({
-  bio: z
-    .string()
-    .trim()
-    .max(120, "bio_too_long")
-    .transform((value) => (value.length === 0 ? null : value)),
-});
+const nameField = (code: string) =>
+  z.string({ error: code }).trim().min(1, code).max(50, code).optional();
+
+export const profileUpdateSchema = z
+  .object({
+    firstName: nameField("invalid_first_name"),
+    lastName: nameField("invalid_last_name"),
+    bio: z
+      .string()
+      .trim()
+      .max(120, "bio_too_long")
+      .transform((value) => (value.length === 0 ? null : value))
+      .optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (
+      data.firstName === undefined &&
+      data.lastName === undefined &&
+      data.bio === undefined
+    ) {
+      ctx.addIssue({ code: "custom", message: "no_fields_to_update" });
+    }
+  });
 
 export const profileListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),

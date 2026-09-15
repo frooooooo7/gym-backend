@@ -1,6 +1,8 @@
 import type { Request, Response } from "express";
 import { asyncHandler } from "../../common/async-handler.js";
 import type { AuthRequest } from "../../middleware/auth.js";
+import { AVATARS_PUBLIC_PREFIX } from "./profile.avatar-upload.js";
+import type { ProfileUpdateInput } from "./profile.schemas.js";
 import { profileService } from "./profile.service.js";
 
 export const profileController = {
@@ -12,7 +14,34 @@ export const profileController = {
 
   updateMe: asyncHandler(async (req: Request, res: Response) => {
     const userId = (req as AuthRequest).auth.sub;
-    const profile = await profileService.updateBio(userId, req.body.bio);
+    const body = req.body as ProfileUpdateInput;
+    const profile = await profileService.updateProfile(userId, {
+      firstName: body.firstName,
+      lastName: body.lastName,
+      bio: body.bio,
+    });
+    res.status(200).json(profile);
+  }),
+
+  uploadAvatar: asyncHandler(async (req: Request, res: Response) => {
+    const userId = (req as AuthRequest).auth.sub;
+    const file = req.file;
+    if (!file) {
+      res.status(400).json({ error: "missing_image" });
+      return;
+    }
+    const publicPath = `${AVATARS_PUBLIC_PREFIX}${file.filename}`;
+    const profile = await profileService.uploadAvatar(
+      userId,
+      publicPath,
+      file.path,
+    );
+    res.status(200).json(profile);
+  }),
+
+  deleteAvatar: asyncHandler(async (req: Request, res: Response) => {
+    const userId = (req as AuthRequest).auth.sub;
+    const profile = await profileService.deleteAvatar(userId);
     res.status(200).json(profile);
   }),
 
@@ -23,6 +52,18 @@ export const profileController = {
       req.params.userId,
     );
     res.status(200).json(profile);
+  }),
+
+  follow: asyncHandler(async (req: Request, res: Response) => {
+    const viewerId = (req as AuthRequest).auth.sub;
+    const body = await profileService.follow(viewerId, req.params.userId);
+    res.status(200).json(body);
+  }),
+
+  unfollow: asyncHandler(async (req: Request, res: Response) => {
+    const viewerId = (req as AuthRequest).auth.sub;
+    const body = await profileService.unfollow(viewerId, req.params.userId);
+    res.status(200).json(body);
   }),
 
   getFollowing: asyncHandler(async (req: Request, res: Response) => {
@@ -41,6 +82,30 @@ export const profileController = {
     const query = req.query as any;
     const items = await profileService.getFollowers(
       userId,
+      query.limit,
+      query.offset,
+    );
+    res.status(200).json(items);
+  }),
+
+  getUserFollowing: asyncHandler(async (req: Request, res: Response) => {
+    const viewerId = (req as AuthRequest).auth.sub;
+    const query = req.query as any;
+    const items = await profileService.getUserFollowing(
+      viewerId,
+      req.params.userId,
+      query.limit,
+      query.offset,
+    );
+    res.status(200).json(items);
+  }),
+
+  getUserFollowers: asyncHandler(async (req: Request, res: Response) => {
+    const viewerId = (req as AuthRequest).auth.sub;
+    const query = req.query as any;
+    const items = await profileService.getUserFollowers(
+      viewerId,
+      req.params.userId,
       query.limit,
       query.offset,
     );
@@ -79,4 +144,3 @@ export const profileController = {
     res.status(200).json(items);
   }),
 };
-

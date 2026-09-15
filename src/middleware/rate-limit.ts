@@ -1,4 +1,5 @@
-import rateLimit from "express-rate-limit";
+import type { Request } from "express";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 
 const json429 = { error: "too_many_requests" };
 
@@ -28,4 +29,17 @@ export const exercisesLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: json429,
+});
+
+/** 60 follow/unfollow requests per authenticated user per minute (falls back to IP) */
+export const followLimiter = rateLimit({
+  windowMs: 60 * 1_000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: json429,
+  keyGenerator: (req) => {
+    const sub = (req as Request & { auth?: { sub?: string } }).auth?.sub;
+    return sub ? `user:${sub}` : ipKeyGenerator(req.ip ?? "");
+  },
 });

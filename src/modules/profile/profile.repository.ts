@@ -9,10 +9,19 @@ export interface ProfileUserRow {
   avatar_url: string | null;
 }
 
+export interface ProfileUserWithPreviousAvatarRow extends ProfileUserRow {
+  previous_avatar_url: string | null;
+}
+
 export interface ProfileStatsRow {
   following_count: number;
   followers_count: number;
   workouts_count: number;
+}
+
+export interface ProfileRelationshipRow {
+  is_following: boolean;
+  is_followed_by: boolean;
 }
 
 export interface ProfileActivityRow {
@@ -32,13 +41,22 @@ export interface FollowingUserRow {
   last_name: string;
   handle: string;
   avatar_url: string | null;
+  is_following: boolean;
 }
+
+export interface ProfileUpdateFields {
+  firstName?: string;
+  lastName?: string;
+  bio?: string | null;
+}
+
+const PROFILE_COLUMNS = "id, first_name, last_name, handle, bio, avatar_url";
 
 export const profileRepository = {
   findProfileById: async (userId: string): Promise<ProfileUserRow | undefined> => {
     const pool = requirePool();
     const { rows } = await pool.query(
-      `SELECT id, first_name, last_name, handle, bio, avatar_url
+      `SELECT ${PROFILE_COLUMNS}
        FROM users
        WHERE id = $1`,
       [userId],
@@ -58,50 +76,155 @@ export const profileRepository = {
     return rows[0] as ProfileStatsRow;
   },
 
-  updateBio: async (userId: string, bio: string | null): Promise<ProfileUserRow | undefined> => {
+  findRelationship: async (
+    viewerId: string,
+    targetUserId: string,
+  ): Promise<ProfileRelationshipRow> => {
     const pool = requirePool();
     const { rows } = await pool.query(
+      `SELECT
+         EXISTS (
+           SELECT 1 FROM user_follows WHERE follower_id = $1 AND following_id = $2
+         ) AS is_following,
+         EXISTS (
+           SELECT 1 FROM user_follows WHERE follower_id = $2 AND following_id = $1
+         ) AS is_followed_by`,
+      [viewerId, targetUserId],
+    );
+    const row = rows[0] as ProfileRelationshipRow | undefined;
+    return {
+      is_following: row?.is_following === true,
+      is_followed_by: row?.is_followed_by === true,
+    };
+  },
+
+  updateProfile: async (
+    userId: string,
+    fields: ProfileUpdateFields,
+  ): Promise<ProfileUserRow | undefined> => {
+    const pool = requirePool();
+    const assignments: string[] = [];
+    const values: unknown[] = [userId];
+    const push = (column: string, value: unknown) => {
+      values.push(value);
+      assignments.push(`${column} = $${values.length}`);
+    };
+    if (fields.firstName !== undefined) push("first_name", fields.firstName);
+    if (fields.lastName !== undefined) push("last_name", fields.lastName);
+    if (fields.bio !== undefined) push("bio", fields.bio);
+    if (assignments.length === 0) {
+      return profileRepository.findProfileById(userId);
+    }
+
+    const { rows } = await pool.query(
       `UPDATE users
-       SET bio = $2
+       SET ${assignments.join(", ")}
        WHERE id = $1
-       RETURNING id, first_name, last_name, handle, bio, avatar_url`,
-      [userId, bio],
+       RETURNING ${PROFILE_COLUMNS}`,
+      values,
     );
     return rows[0] as ProfileUserRow | undefined;
   },
 
+  /** Sets avatar_url and returns the updated row plus the value it replaced. */
+  updateAvatarUrl: async (
+    userId: string,
+    avatarUrl: string | null,
+  ): Promise<ProfileUserWithPreviousAvatarRow | undefined> => {
+    const pool = requirePool();
+    const { rows } = await pool.query(
+      `UPDATE users u
+       SET avatar_url = $2
+       FROM users prev
+       WHERE u.id = $1 AND prev.id = u.id
+       RETURNING u.id, u.first_name, u.last_name, u.handle, u.bio, u.avatar_url,
+                 prev.avatar_url AS previous_avatar_url`,
+      [userId, avatarUrl],
+    );
+    return rows[0] as ProfileUserWithPreviousAvatarRow | undefined;
+  },
+
+  userExists: async (userId: string): Promise<boolean> => {
+    const pool = requirePool();
+    const { rows } = await pool.query(
+      `SELECT 1 FROM users WHERE id = $1`,
+      [userId],
+    );
+    return rows.length > 0;
+  },
+
+  insertFollow: async (followerId: string, followingId: string): Promise<void> => {
+    const pool = requirePool();
+    await pool.query(
+      `INSERT INTO user_follows (follower_id, following_id)
+       VALUES ($1, $2)
+       ON CONFLICT DO NOTHING`,
+      [followerId, followingId],
+    );
+  },
+
+  deleteFollow: async (followerId: string, followingId: string): Promise<void> => {
+    const pool = requirePool();
+    await pool.query(
+      `DELETE FROM user_follows
+       WHERE follower_id = $1 AND following_id = $2`,
+      [followerId, followingId],
+    );
+  },
+
+  countFollowers: async (userId: string): Promise<number> => {
+    const pool = requirePool();
+    const { rows } = await pool.query(
+      `SELECT COUNT(*)::int AS followers_count
+       FROM user_follows
+       WHERE following_id = $1`,
+      [userId],
+    );
+    return (rows[0] as { followers_count?: number } | undefined)?.followers_count ?? 0;
+  },
+
   listFollowing: async (
     userId: string,
+    viewerId: string,
     limit: number,
     offset: number,
   ): Promise<FollowingUserRow[]> => {
     const pool = requirePool();
     const { rows } = await pool.query(
-      `SELECT u.id, u.first_name, u.last_name, u.handle, u.avatar_url
+      `SELECT u.id, u.first_name, u.last_name, u.handle, u.avatar_url,
+              EXISTS (
+                SELECT 1 FROM user_follows vf
+                WHERE vf.follower_id = $2 AND vf.following_id = u.id
+              ) AS is_following
        FROM user_follows uf
        JOIN users u ON u.id = uf.following_id
        WHERE uf.follower_id = $1
        ORDER BY uf.created_at DESC, u.handle ASC
-       LIMIT $2 OFFSET $3`,
-      [userId, limit, offset],
+       LIMIT $3 OFFSET $4`,
+      [userId, viewerId, limit, offset],
     );
     return rows as FollowingUserRow[];
   },
 
   listFollowers: async (
     userId: string,
+    viewerId: string,
     limit: number,
     offset: number,
   ): Promise<FollowingUserRow[]> => {
     const pool = requirePool();
     const { rows } = await pool.query(
-      `SELECT u.id, u.first_name, u.last_name, u.handle, u.avatar_url
+      `SELECT u.id, u.first_name, u.last_name, u.handle, u.avatar_url,
+              EXISTS (
+                SELECT 1 FROM user_follows vf
+                WHERE vf.follower_id = $2 AND vf.following_id = u.id
+              ) AS is_following
        FROM user_follows uf
        JOIN users u ON u.id = uf.follower_id
        WHERE uf.following_id = $1
        ORDER BY uf.created_at DESC, u.handle ASC
-       LIMIT $2 OFFSET $3`,
-      [userId, limit, offset],
+       LIMIT $3 OFFSET $4`,
+      [userId, viewerId, limit, offset],
     );
     return rows as FollowingUserRow[];
   },
@@ -114,14 +237,18 @@ export const profileRepository = {
     const pool = requirePool();
     const pattern = `%${query.toLowerCase()}%`;
     const { rows } = await pool.query(
-      `SELECT id, first_name, last_name, handle, avatar_url
-       FROM users
-       WHERE id <> $1
+      `SELECT u.id, u.first_name, u.last_name, u.handle, u.avatar_url,
+              EXISTS (
+                SELECT 1 FROM user_follows vf
+                WHERE vf.follower_id = $1 AND vf.following_id = u.id
+              ) AS is_following
+       FROM users u
+       WHERE u.id <> $1
          AND (
-           lower(first_name || ' ' || last_name) LIKE $2
-           OR lower(handle) LIKE $2
+           lower(u.first_name || ' ' || u.last_name) LIKE $2
+           OR lower(u.handle) LIKE $2
          )
-       ORDER BY handle ASC
+       ORDER BY u.handle ASC
        LIMIT $3`,
       [viewerId, pattern, limit],
     );

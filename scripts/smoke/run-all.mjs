@@ -12,11 +12,13 @@
 //   DATABASE_URL          required; the database must be disposable — its name
 //                         has to contain "smoke", "test" or "ci" unless
 //                         SMOKE_ALLOW_ANY_DB=1
+//   SMOKE_KEEP_DB         "1" keeps existing data (default: schema is reset first)
 //   SMOKE_PREFIXES        comma-separated, default "legacy,v1"
 //   SMOKE_ONLY            comma-separated script names, e.g. "feed,account"
 //   SMOKE_SERVER          "tsx" (default, runs src/index.ts) or "dist" (node dist/index.js)
 //   SMOKE_SERVER_LOG_LEVEL  server LOG_LEVEL, default "warn"
 import { spawn } from "node:child_process";
+import pg from "pg";
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
@@ -48,6 +50,23 @@ if (!/smoke|test|ci/i.test(dbName) && process.env.SMOKE_ALLOW_ANY_DB !== "1") {
     `refusing to run against database "${dbName}" — smoke tests create users and data. ` +
       `Use a database whose name contains smoke/test/ci, or set SMOKE_ALLOW_ANY_DB=1.`,
   );
+}
+
+// Scripts rank data globally (e.g. suggested users), so leftovers from earlier
+// runs make them flaky. Start from an empty schema — but only for databases
+// that are disposable by name, never when SMOKE_ALLOW_ANY_DB forced the run.
+if (/smoke|test|ci/i.test(dbName) && process.env.SMOKE_KEEP_DB !== "1") {
+  const client = new pg.Client({ connectionString: databaseUrl });
+  try {
+    await client.connect();
+    await client.query("DROP SCHEMA public CASCADE; CREATE SCHEMA public;");
+    console.log(`[smoke] reset database "${dbName}" (SMOKE_KEEP_DB=1 skips this)`);
+  } catch (error) {
+    const detail = error.errors?.map((e) => e.message).join("; ") || error.message || String(error);
+    fail(`could not reset database "${dbName}": ${detail}`);
+  } finally {
+    await client.end().catch(() => {});
+  }
 }
 
 const selectedPrefixes = (process.env.SMOKE_PREFIXES ?? "legacy,v1")

@@ -142,6 +142,32 @@ export const feedRepository = {
     return rows as PostRow[];
   },
 
+  /** Shared, completed posts of one author (their profile timeline). */
+  listUserPosts: async (
+    authorId: string,
+    limit: number,
+    cursor?: KeysetCursor,
+  ): Promise<PostRow[]> => {
+    const pool = requirePool();
+    const params: unknown[] = [authorId, limit];
+    let cursorClause = "";
+    if (cursor) {
+      params.push(cursor.at, cursor.id);
+      cursorClause = "AND (ts.started_at, ts.id) < ($3::timestamptz, $4::uuid)";
+    }
+    const { rows } = await pool.query(
+      `${POST_SELECT}
+       WHERE ts.user_id = $1
+         AND ts.status = 'completed'
+         AND ts.shared_to_profile = true
+         ${cursorClause}
+       ORDER BY ts.started_at DESC, ts.id DESC
+       LIMIT $2`,
+      params,
+    );
+    return rows as PostRow[];
+  },
+
   /** A completed session visible to the viewer (shared, or their own). */
   findVisiblePost: async (
     viewerId: string,

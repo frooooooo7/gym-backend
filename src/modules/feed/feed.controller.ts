@@ -7,6 +7,7 @@ import type {
   FeedQuery,
   KudosListQuery,
   SuggestedUsersQuery,
+  UserPostsQuery,
 } from "./feed.schemas.js";
 import { feedService } from "./feed.service.js";
 
@@ -17,6 +18,17 @@ export const feedController = {
     const query = req.query as unknown as FeedQuery;
     const body = await feedService.getFeed(
       viewerIdOf(req),
+      query.limit,
+      query.cursor,
+    );
+    res.status(200).json(body);
+  }),
+
+  getUserPosts: asyncHandler(async (req: Request, res: Response) => {
+    const query = req.query as unknown as UserPostsQuery;
+    const body = await feedService.getUserPosts(
+      viewerIdOf(req),
+      req.params.userId,
       query.limit,
       query.cursor,
     );

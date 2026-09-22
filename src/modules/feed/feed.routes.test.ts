@@ -39,6 +39,8 @@ const app = createApp();
 // ---- SQL markers (unique substrings of each repository query) ----
 const SQL = {
   listFeed: "OR ts.user_id IN (",
+  listUserPosts: "WHERE ts.user_id = $1",
+  userExists: "SELECT 1 FROM users WHERE id = $1",
   visiblePost: "ts.shared_to_profile = true OR ts.user_id = $2",
   postStats: "WITH ORDINALITY",
   socialStats: "AS has_kudoed",
@@ -366,6 +368,95 @@ describe("GET /feed", () => {
       expect(res.body.error).toBe("invalid_limit");
     },
   );
+});
+
+describe("GET /users/:userId/posts", () => {
+  beforeEach(resetDbMocks);
+
+  it("returns 401 without auth", async () => {
+    const res = await request(app).get(`/users/${OTHER_USER_ID}/posts`);
+    expect(res.status).toBe(401);
+  });
+
+  it("returns the author's shared posts in the feed shape", async () => {
+    whenSqlContains({
+      [SQL.userExists]: { rows: [{ "?column?": 1 }] },
+      [SQL.listUserPosts]: { rows: [postRow()] },
+      ...postAggregates,
+    });
+
+    const res = await request(app)
+      .get(`/users/${OTHER_USER_ID}/posts`)
+      .set(authHeaders());
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      items: [expectedPost],
+      nextCursor: null,
+      hasMore: false,
+    });
+    const call = findCall(SQL.listUserPosts);
+    expect(call?.[1]).toEqual([OTHER_USER_ID, 11]);
+    const sql = String(call?.[0]);
+    expect(sql).toContain("ts.status = 'completed'");
+    expect(sql).toContain("ts.shared_to_profile = true");
+    expect(sql).toContain("ORDER BY ts.started_at DESC, ts.id DESC");
+  });
+
+  it("paginates with a keyset cursor", async () => {
+    whenSqlContains({
+      [SQL.userExists]: { rows: [{ "?column?": 1 }] },
+      [SQL.listUserPosts]: {
+        rows: [
+          postRow(),
+          postRow({
+            id: SESSION_ID_2,
+            cursor_started_at: "2026-05-25T10:00:00.654321Z",
+          }),
+        ],
+      },
+    });
+
+    const res = await request(app)
+      .get(`/users/${OTHER_USER_ID}/posts?limit=1`)
+      .set(authHeaders());
+
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.hasMore).toBe(true);
+    expect(decodeCursor(res.body.nextCursor)).toEqual({
+      startedAt: "2026-05-26T18:32:00.000000Z",
+      id: SESSION_ID,
+    });
+
+    mockQuery.mockClear();
+    await request(app)
+      .get(`/users/${OTHER_USER_ID}/posts?limit=1&cursor=${res.body.nextCursor}`)
+      .set(authHeaders());
+    expect(findCall(SQL.listUserPosts)?.[1]).toEqual([
+      OTHER_USER_ID,
+      2,
+      "2026-05-26T18:32:00.000000Z",
+      SESSION_ID,
+    ]);
+  });
+
+  it("returns 404 user_not_found for an unknown user", async () => {
+    whenSqlContains({});
+    const res = await request(app)
+      .get(`/users/${OTHER_USER_ID}/posts`)
+      .set(authHeaders());
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe("user_not_found");
+  });
+
+  it("returns 400 invalid_uuid for a malformed id", async () => {
+    const res = await request(app)
+      .get("/users/not-a-uuid/posts")
+      .set(authHeaders());
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("invalid_uuid");
+  });
 });
 
 describe("GET /posts/:sessionId", () => {

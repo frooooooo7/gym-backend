@@ -163,11 +163,10 @@ Auth column: 🔒 = `Authorization: Bearer <jwt>` required.
 | DELETE | `/profile/me/avatar` | 🔒 | Remove avatar. |
 | GET | `/profile/following` | 🔒 | Who I follow (`limit`, `offset`). |
 | GET | `/profile/followers` | 🔒 | My followers (`limit`, `offset`). |
-| GET | `/profile/activities` | 🔒 | My recent completed sessions. |
 | GET | `/users/search` | 🔒 | Search users (`q`, `limit`). |
 | GET | `/users/suggested` | 🔒 | Users to follow (empty-feed state). |
 | GET | `/users/:userId/profile` | 🔒 | Public profile + `isFollowing` / `isFollowedBy`. |
-| GET | `/users/:userId/activities` | 🔒 | User's shared sessions. |
+| GET | `/users/:userId/posts` | 🔒 | User's shared sessions as feed posts (`limit`, `cursor`). |
 | GET | `/users/:userId/following` | 🔒 | Who the user follows. |
 | GET | `/users/:userId/followers` | 🔒 | The user's followers. |
 | POST | `/users/:userId/follow` | 🔒 | Follow (idempotent). 60/min per user. |
@@ -543,8 +542,8 @@ User list item (same as `/profile/followers`):
   is rate limited to 30 per user per minute.
 - **Suggested users** — users the viewer doesn't follow (excluding self), ranked by completed
   shared sessions in the last 30 days, then newest accounts. Meant for the empty-feed state.
-- `GET /profile/activities` and `GET /users/:userId/activities` items carry real `kudosCount`,
-  `commentCount` and `hasKudoed` (for the viewer).
+- `GET /users/:userId/posts` is the profile timeline: the author's shared, completed sessions in
+  the same shape and keyset pagination as `GET /feed` (`user_not_found` for an unknown user).
 
 ### Error codes
 

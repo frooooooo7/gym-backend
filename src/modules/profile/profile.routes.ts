@@ -10,7 +10,6 @@ import { validateRequest } from "../../middleware/validation.js";
 import { avatarUpload } from "./profile.avatar-upload.js";
 import { profileController } from "./profile.controller.js";
 import {
-  profileActivitiesQuerySchema,
   profileListQuerySchema,
   profileUpdateSchema,
   userIdParamsSchema,
@@ -70,27 +69,10 @@ profileRouter.get(
 );
 
 profileRouter.get(
-  "/profile/activities",
-  requireAuth,
-  validateRequest({ query: profileActivitiesQuerySchema }),
-  profileController.getActivities,
-);
-
-profileRouter.get(
   "/users/search",
   requireAuth,
   validateRequest({ query: userSearchQuerySchema }),
   profileController.searchUsers,
-);
-
-profileRouter.get(
-  "/users/:userId/activities",
-  requireAuth,
-  validateRequest({
-    params: userIdParamsSchema,
-    query: profileActivitiesQuerySchema,
-  }),
-  profileController.getUserActivities,
 );
 
 profileRouter.get(

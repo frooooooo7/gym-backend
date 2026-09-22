@@ -286,16 +286,16 @@ r = await req("GET", "/feed", { token: a.token });
 const p1c = r.json?.items?.find((p) => p.id === S1);
 check("feed reflects comments", p1c && p1c.commentCount === 4 && p1c.kudosCount === 1 && p1c.hasKudoed === false, p1c);
 
-// ---- profile activities ----
-r = await req("GET", `/users/${b.id}/activities?limit=5`, { token: c.token });
-const actC = r.json?.find?.((x) => x.id === S1);
-check("users/:id/activities real counts (C kudoed)", r.status === 200 && actC && actC.kudosCount === 1 && actC.commentCount === 4 && actC.hasKudoed === true && actC.kind === "strength" && Array.isArray(actC.stats), r.json);
-r = await req("GET", `/users/${b.id}/activities?limit=5`, { token: a.token });
-check("users/:id/activities hasKudoed false for A", r.status === 200 && r.json.find((x) => x.id === S1)?.hasKudoed === false, r.json);
-r = await req("GET", `/profile/activities?limit=5`, { token: b.token });
-const actB = r.json?.find?.((x) => x.id === S1);
-check("profile/activities real counts", r.status === 200 && actB && actB.kudosCount === 1 && actB.commentCount === 4 && actB.hasKudoed === false, r.json);
-check("profile/activities volume", actB?.stats?.find((s) => s.label === "Objętość")?.value?.replace(/\s/g, "") === "2375kg", actB?.stats);
+// ---- profile timeline (user posts) ----
+r = await req("GET", `/users/${b.id}/posts?limit=5`, { token: c.token });
+const actC = r.json?.items?.find?.((x) => x.id === S1);
+check("users/:id/posts real counts (C kudoed)", r.status === 200 && actC && actC.kudosCount === 1 && actC.commentCount === 4 && actC.hasKudoed === true && actC.isOwn === false && Array.isArray(actC.topExercises), r.json);
+r = await req("GET", `/users/${b.id}/posts?limit=5`, { token: a.token });
+check("users/:id/posts hasKudoed false for A", r.status === 200 && r.json.items.find((x) => x.id === S1)?.hasKudoed === false, r.json);
+r = await req("GET", `/users/${b.id}/posts?limit=5`, { token: b.token });
+const actB = r.json?.items?.find?.((x) => x.id === S1);
+check("own users/:id/posts real counts", r.status === 200 && actB && actB.kudosCount === 1 && actB.commentCount === 4 && actB.hasKudoed === false && actB.isOwn === true, r.json);
+check("own users/:id/posts volume", Math.round(actB?.totalVolumeKg ?? 0) === 2375, actB);
 
 // ---- suggested users ----
 r = await req("GET", "/users/suggested?limit=30", { token: a.token });

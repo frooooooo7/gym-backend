@@ -4,92 +4,15 @@ import { AppError } from "../../common/errors.js";
 import { logger, serializeError } from "../../common/logger.js";
 import { isForeignKeyViolation } from "../../common/pg-errors.js";
 import { diskPathFromPublicUrl, safeUnlink } from "../../common/uploads.js";
-import {
-  feedRepository,
-  type PostSocialRow,
-} from "../feed/feed.repository.js";
 import { AVATARS_PUBLIC_PREFIX } from "./profile.avatar-upload.js";
 import {
   profileRepository,
   type FollowingUserRow,
-  type ProfileActivityRow,
   type ProfileRelationshipRow,
   type ProfileStatsRow,
   type ProfileUpdateFields,
   type ProfileUserRow,
 } from "./profile.repository.js";
-
-const POLISH_MONTHS = [
-  "sty",
-  "lut",
-  "mar",
-  "kwi",
-  "maj",
-  "cze",
-  "lip",
-  "sie",
-  "wrz",
-  "paź",
-  "lis",
-  "gru",
-];
-
-const startOfDay = (date: Date): Date =>
-  new Date(date.getFullYear(), date.getMonth(), date.getDate());
-
-const formatRelativeDate = (date: Date, now = new Date()): string => {
-  const today = startOfDay(now);
-  const target = startOfDay(date);
-  const diffDays = Math.round(
-    (today.getTime() - target.getTime()) / (24 * 60 * 60 * 1000),
-  );
-
-  if (diffDays === 0) return "Dziś";
-  if (diffDays === 1) return "Wczoraj";
-
-  if (date.getFullYear() === now.getFullYear()) {
-    return `${date.getDate()} ${POLISH_MONTHS[date.getMonth()]}`;
-  }
-
-  return date.toLocaleDateString("pl-PL");
-};
-
-const formatTimeLabel = (date: Date): string =>
-  date.toLocaleTimeString("pl-PL", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-
-const formatDuration = (durationSec: number): string => {
-  const totalMinutes = Math.max(1, Math.round(durationSec / 60));
-  if (totalMinutes < 60) {
-    return `${totalMinutes} min`;
-  }
-
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  if (minutes === 0) {
-    return `${hours} godz`;
-  }
-  return `${hours} godz ${minutes} min`;
-};
-
-const formatVolume = (volumeKg: number): string => {
-  const rounded = Math.round(volumeKg);
-  if (rounded <= 0) return "—";
-  return `${rounded.toLocaleString("pl-PL")} kg`;
-};
-
-const formatExerciseDetail = (count: number): string => {
-  if (count === 1) return "1 ćwiczenie";
-  const mod10 = count % 10;
-  const mod100 = count % 100;
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
-    return `${count} ćwiczenia`;
-  }
-  return `${count} ćwiczeń`;
-};
 
 export const formatFollowingUser = (row: FollowingUserRow) => ({
   id: row.id,
@@ -126,40 +49,6 @@ const formatProfile = (
   isFollowing: isOwnProfile ? false : relationship.is_following,
   isFollowedBy: isOwnProfile ? false : relationship.is_followed_by,
 });
-
-const formatActivity = (
-  row: ProfileActivityRow,
-  social: PostSocialRow | undefined,
-) => ({
-  id: row.id,
-  kind: "strength" as const,
-  title: row.plan_name,
-  date: formatRelativeDate(row.started_at),
-  duration: formatDuration(row.duration_sec),
-  detail: formatExerciseDetail(row.exercises_count),
-  timeLabel: formatTimeLabel(row.started_at),
-  stats: [
-    { label: "Czas", value: formatDuration(row.duration_sec) },
-    { label: "Ćwiczenia", value: formatExerciseDetail(row.exercises_count) },
-    { label: "Objętość", value: formatVolume(row.volume_kg) },
-  ],
-  kudosCount: social?.kudos_count ?? 0,
-  commentCount: social?.comment_count ?? 0,
-  hasKudoed: social?.has_kudoed === true,
-});
-
-/** Formats activities with kudos/comment counts loaded in one batched query. */
-const formatActivities = async (
-  viewerId: string,
-  rows: ProfileActivityRow[],
-) => {
-  const social = await feedRepository.findSocialStats(
-    rows.map((row) => row.id),
-    viewerId,
-  );
-  const socialById = new Map(social.map((s) => [s.session_id, s]));
-  return rows.map((row) => formatActivity(row, socialById.get(row.id)));
-};
 
 /** Best-effort removal; only files we manage under /uploads/avatars/ are touched. */
 const removeManagedAvatar = async (avatarUrl: string | null): Promise<void> => {
@@ -351,23 +240,4 @@ export const profileService = {
     return rows.map(formatFollowingUser);
   },
 
-  getRecentActivities: async (userId: string, limit: number) => {
-    const rows = await profileRepository.listRecentActivities(userId, limit);
-    return formatActivities(userId, rows);
-  },
-
-  getUserActivities: async (
-    viewerId: string,
-    targetUserId: string,
-    limit: number,
-  ) => {
-    const [row, rows] = await Promise.all([
-      profileRepository.findProfileById(targetUserId),
-      profileRepository.listRecentActivities(targetUserId, limit),
-    ]);
-    if (!row) {
-      throw new AppError(404, "user_not_found");
-    }
-    return formatActivities(viewerId, rows);
-  },
 };

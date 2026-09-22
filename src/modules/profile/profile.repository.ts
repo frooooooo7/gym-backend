@@ -1,8 +1,4 @@
 import { requirePool } from "../../db/require-pool.js";
-import {
-  sessionDurationSecSql,
-  setVolumeSql,
-} from "../../db/sql-fragments.js";
 
 export interface ProfileUserRow {
   id: string;
@@ -26,17 +22,6 @@ export interface ProfileStatsRow {
 export interface ProfileRelationshipRow {
   is_following: boolean;
   is_followed_by: boolean;
-}
-
-export interface ProfileActivityRow {
-  id: string;
-  started_at: Date;
-  finished_at: Date | null;
-  duration_sec: number;
-  plan_name: string;
-  exercises_count: number;
-  completed_sets_count: number;
-  volume_kg: number;
 }
 
 export interface FollowingUserRow {
@@ -259,42 +244,4 @@ export const profileRepository = {
     return rows as FollowingUserRow[];
   },
 
-  listRecentActivities: async (
-    userId: string,
-    limit: number,
-  ): Promise<ProfileActivityRow[]> => {
-    const pool = requirePool();
-    const { rows } = await pool.query(
-      `SELECT
-         ts.id,
-         ts.started_at,
-         ts.finished_at,
-         ${sessionDurationSecSql("ts")} AS duration_sec,
-         ts.plan_name,
-         COALESCE(ec.exercises_count, 0) AS exercises_count,
-         COALESCE(sc.completed_sets_count, 0) AS completed_sets_count,
-         COALESCE(sc.volume_kg, 0) AS volume_kg
-       FROM training_sessions ts
-       LEFT JOIN LATERAL (
-         SELECT COUNT(*)::int AS exercises_count
-         FROM training_session_exercises tse
-         WHERE tse.session_id = ts.id
-       ) ec ON true
-       LEFT JOIN LATERAL (
-         SELECT
-           COUNT(*)::int AS completed_sets_count,
-           COALESCE(SUM(${setVolumeSql("tss.actual_weight", "tss.actual_reps")}), 0)::float8 AS volume_kg
-         FROM training_session_exercises tse
-         JOIN training_session_sets tss ON tss.session_exercise_id = tse.id
-         WHERE tse.session_id = ts.id AND tss.completed = true
-       ) sc ON true
-       WHERE ts.user_id = $1
-         AND ts.status = 'completed'
-         AND ts.shared_to_profile = true
-       ORDER BY ts.started_at DESC, ts.id DESC
-       LIMIT $2`,
-      [userId, limit],
-    );
-    return rows as ProfileActivityRow[];
-  },
 };

@@ -23,7 +23,6 @@ const JWT_SECRET = "dev-secret-change-in-production-min-32-chars!!";
 const USER_ID = "aaaaaaaa-0000-0000-0000-000000000001";
 const OTHER_USER_ID = "bbbbbbbb-0000-0000-0000-000000000002";
 const USER_EMAIL = "tester@gym.com";
-const SESSION_ID = "f1000000-0000-4000-8000-000000000001";
 
 const makeToken = (sub = USER_ID, email = USER_EMAIL) =>
   jwt.sign({ sub, email }, JWT_SECRET, { expiresIn: "1h" });
@@ -58,17 +57,6 @@ const followingRow = {
   handle: "anna.nowak_d4e5f6",
   avatar_url: null,
   is_following: true,
-};
-
-const activityRow = {
-  id: SESSION_ID,
-  started_at: new Date("2026-05-26T18:32:00Z"),
-  finished_at: new Date("2026-05-26T19:30:00Z"),
-  duration_sec: 3480,
-  plan_name: "Push/Pull/Legs",
-  exercises_count: 6,
-  completed_sets_count: 18,
-  volume_kg: 6450,
 };
 
 const whenSqlContains = (patterns: Record<string, { rows?: unknown[] }>) => {
@@ -333,76 +321,6 @@ describe("profile routes", () => {
     expect(call?.[1]).toEqual([USER_ID, USER_ID, 10, 0]);
   });
 
-  it("GET /profile/activities returns mapped training sessions", async () => {
-    whenSqlContains({
-      "FROM training_sessions ts": { rows: [activityRow] },
-    });
-
-    const res = await request(app)
-      .get("/profile/activities?limit=5")
-      .set(authHeaders());
-
-    expect(res.status).toBe(200);
-    expect(res.body).toHaveLength(1);
-    expect(res.body[0]).toMatchObject({
-      id: SESSION_ID,
-      kind: "strength",
-      title: "Push/Pull/Legs",
-      duration: "58 min",
-      detail: "6 ćwiczeń",
-      kudosCount: 0,
-      commentCount: 0,
-      hasKudoed: false,
-    });
-    expect(res.body[0].stats).toEqual([
-      { label: "Czas", value: "58 min" },
-      { label: "Ćwiczenia", value: "6 ćwiczeń" },
-      { label: "Objętość", value: "6450 kg" },
-    ]);
-  });
-
-  it("GET /profile/activities returns real kudos/comment counts (batched)", async () => {
-    whenSqlContains({
-      "FROM training_sessions ts": {
-        rows: [activityRow, { ...activityRow, id: "f1000000-0000-4000-8000-000000000002" }],
-      },
-      "AS has_kudoed": {
-        rows: [
-          { session_id: SESSION_ID, kudos_count: 3, comment_count: 2, has_kudoed: true },
-        ],
-      },
-    });
-
-    const res = await request(app)
-      .get("/profile/activities?limit=5")
-      .set(authHeaders());
-
-    expect(res.status).toBe(200);
-    expect(res.body[0]).toMatchObject({ kudosCount: 3, commentCount: 2, hasKudoed: true });
-    expect(res.body[1]).toMatchObject({ kudosCount: 0, commentCount: 0, hasKudoed: false });
-    const socialCalls = mockQuery.mock.calls.filter((call) =>
-      String(call[0]).includes("AS has_kudoed"),
-    );
-    expect(socialCalls).toHaveLength(1);
-    expect(socialCalls[0][1]).toEqual([
-      [SESSION_ID, "f1000000-0000-4000-8000-000000000002"],
-      USER_ID,
-    ]);
-  });
-
-  it("GET /profile/activities only lists sessions shared to profile", async () => {
-    whenSqlContains({
-      "FROM training_sessions ts": { rows: [activityRow] },
-    });
-
-    await request(app).get("/profile/activities?limit=5").set(authHeaders());
-
-    const activitiesSql = mockQuery.mock.calls
-      .map((call) => String(call[0]))
-      .find((sql) => sql.includes("FROM training_sessions ts"));
-    expect(activitiesSql).toContain("ts.shared_to_profile = true");
-  });
-
   it("GET /users/search returns matching users with isFollowing", async () => {
     whenSqlContains({
       "lower(u.handle) LIKE $2": {
@@ -430,69 +348,6 @@ describe("profile routes", () => {
     expect(String(findCall("lower(u.handle) LIKE $2")?.[0])).toContain(
       "vf.follower_id = $1",
     );
-  });
-
-  it("GET /users/:userId/activities returns user activities", async () => {
-    whenSqlContains({
-      "FROM users": { rows: [{ ...profileRow, id: OTHER_USER_ID }] },
-      "FROM training_sessions ts": { rows: [activityRow] },
-    });
-
-    const res = await request(app)
-      .get(`/users/${OTHER_USER_ID}/activities?limit=3`)
-      .set(authHeaders());
-
-    expect(res.status).toBe(200);
-    expect(res.body).toHaveLength(1);
-    expect(res.body[0].id).toBe(SESSION_ID);
-    expect(res.body[0].hasKudoed).toBe(false);
-  });
-
-  it("GET /users/:userId/activities resolves hasKudoed for the viewer", async () => {
-    whenSqlContains({
-      "FROM users": { rows: [{ ...profileRow, id: OTHER_USER_ID }] },
-      "FROM training_sessions ts": { rows: [activityRow] },
-      "AS has_kudoed": {
-        rows: [
-          { session_id: SESSION_ID, kudos_count: 1, comment_count: 4, has_kudoed: true },
-        ],
-      },
-    });
-
-    const res = await request(app)
-      .get(`/users/${OTHER_USER_ID}/activities?limit=3`)
-      .set(authHeaders());
-
-    expect(res.status).toBe(200);
-    expect(res.body[0]).toMatchObject({ kudosCount: 1, commentCount: 4, hasKudoed: true });
-    expect(findCall("AS has_kudoed")?.[1]).toEqual([[SESSION_ID], USER_ID]);
-  });
-
-  it("GET /users/:userId/activities returns 401 without auth", async () => {
-    const res = await request(app).get(
-      `/users/${OTHER_USER_ID}/activities?limit=3`,
-    );
-    expect(res.status).toBe(401);
-  });
-
-  it("GET /users/:userId/activities returns 400 for invalid userId", async () => {
-    const res = await request(app)
-      .get("/users/not-a-uuid/activities?limit=3")
-      .set(authHeaders());
-    expect(res.status).toBe(400);
-  });
-
-  it("GET /users/:userId/activities returns 404 when user missing", async () => {
-    whenSqlContains({
-      "FROM users": { rows: [] },
-    });
-
-    const res = await request(app)
-      .get(`/users/${OTHER_USER_ID}/activities?limit=3`)
-      .set(authHeaders());
-
-    expect(res.status).toBe(404);
-    expect(res.body).toMatchObject({ error: "user_not_found" });
   });
 
   it("GET /profile/followers returns user list", async () => {

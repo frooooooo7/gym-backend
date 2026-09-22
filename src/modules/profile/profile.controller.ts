@@ -112,27 +112,6 @@ export const profileController = {
     res.status(200).json(items);
   }),
 
-  getActivities: asyncHandler(async (req: Request, res: Response) => {
-    const userId = (req as AuthRequest).auth.sub;
-    const query = req.query as any;
-    const items = await profileService.getRecentActivities(
-      userId,
-      query.limit,
-    );
-    res.status(200).json(items);
-  }),
-
-  getUserActivities: asyncHandler(async (req: Request, res: Response) => {
-    const viewerId = (req as AuthRequest).auth.sub;
-    const query = req.query as any;
-    const items = await profileService.getUserActivities(
-      viewerId,
-      req.params.userId,
-      query.limit,
-    );
-    res.status(200).json(items);
-  }),
-
   searchUsers: asyncHandler(async (req: Request, res: Response) => {
     const query = req.query as any;
     const viewerId = (req as AuthRequest).auth.sub;

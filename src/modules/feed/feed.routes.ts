@@ -11,6 +11,8 @@ import {
   kudosListQuerySchema,
   postParamsSchema,
   suggestedUsersQuerySchema,
+  userPostsParamsSchema,
+  userPostsQuerySchema,
 } from "./feed.schemas.js";
 
 export const feedRouter = Router();
@@ -28,6 +30,13 @@ feedRouter.get(
   requireAuth,
   validateRequest({ query: suggestedUsersQuerySchema }),
   feedController.getSuggestedUsers,
+);
+
+feedRouter.get(
+  "/users/:userId/posts",
+  requireAuth,
+  validateRequest({ params: userPostsParamsSchema, query: userPostsQuerySchema }),
+  feedController.getUserPosts,
 );
 
 feedRouter.get(

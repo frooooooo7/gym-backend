@@ -67,6 +67,15 @@ export const feedQuerySchema = z.object({
   cursor: cursorQuery(feedCursor),
 });
 
+export const userPostsQuerySchema = z.object({
+  limit: limitQuery(50, 10),
+  cursor: cursorQuery(feedCursor),
+});
+
+export const userPostsParamsSchema = z.object({
+  userId: postgresUuid,
+});
+
 export const commentsQuerySchema = z.object({
   limit: limitQuery(100, 30),
   cursor: cursorQuery(commentCursor),
@@ -109,7 +118,8 @@ export const createCommentBodySchema = z.object(
 );
 
 export type FeedQuery = z.infer<typeof feedQuerySchema>;
-export type CommentsQuery = z.infer<typeof commentsQuerySchema>;
+export type UserPostsQuery = z.infer<typeof userPostsQuerySchema>;
+export type CommentsQuery =z.infer<typeof commentsQuerySchema>;
 export type KudosListQuery = z.infer<typeof kudosListQuerySchema>;
 export type SuggestedUsersQuery = z.infer<typeof suggestedUsersQuerySchema>;
 export type CreateCommentBody = z.infer<typeof createCommentBodySchema>;

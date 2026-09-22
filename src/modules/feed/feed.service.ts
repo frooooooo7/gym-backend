@@ -1,5 +1,6 @@
 import { AppError } from "../../common/errors.js";
 import { isForeignKeyViolation } from "../../common/pg-errors.js";
+import { profileRepository } from "../profile/profile.repository.js";
 import { formatFollowingUser } from "../profile/profile.service.js";
 import { trainingHistoryRepository } from "../training-history/training-history.repository.js";
 import {
@@ -145,6 +146,31 @@ const requireVisiblePost = async (
 export const feedService = {
   getFeed: async (viewerId: string, limit: number, cursor?: KeysetCursor) => {
     const rows = await feedRepository.listFeed(viewerId, limit + 1, cursor);
+    const hasMore = rows.length > limit;
+    const pageRows = hasMore ? rows.slice(0, limit) : rows;
+    const items = await buildPosts(viewerId, pageRows);
+    const last = pageRows.at(-1);
+    return {
+      items,
+      nextCursor:
+        hasMore && last ? feedCursor.encode(last.cursor_started_at, last.id) : null,
+      hasMore,
+    };
+  },
+
+  getUserPosts: async (
+    viewerId: string,
+    authorId: string,
+    limit: number,
+    cursor?: KeysetCursor,
+  ) => {
+    const [exists, rows] = await Promise.all([
+      profileRepository.userExists(authorId),
+      feedRepository.listUserPosts(authorId, limit + 1, cursor),
+    ]);
+    if (!exists) {
+      throw new AppError(404, "user_not_found");
+    }
     const hasMore = rows.length > limit;
     const pageRows = hasMore ? rows.slice(0, limit) : rows;
     const items = await buildPosts(viewerId, pageRows);

@@ -145,10 +145,10 @@ r = await req("GET", `/posts/${S1.id}`, { token: a.token });
 check("post 404 after delete", r.status === 404 && r.json.error === "post_not_found", r);
 r = await req("GET", "/feed?limit=50", { token: a.token });
 check("feed omits deleted", r.status === 200 && !r.json.items.some((p) => p.id === S1.id), r.json);
-r = await req("GET", `/users/${b.id}/activities?limit=20`, { token: a.token });
-check("users/:id/activities omits deleted", r.status === 200 && Array.isArray(r.json) && !r.json.some((x) => x.id === S1.id), r.json);
-r = await req("GET", `/profile/activities?limit=20`, { token: b.token });
-check("profile/activities omits deleted", r.status === 200 && Array.isArray(r.json) && !r.json.some((x) => x.id === S1.id), r.json);
+r = await req("GET", `/users/${b.id}/posts?limit=20`, { token: a.token });
+check("users/:id/posts omits deleted", r.status === 200 && Array.isArray(r.json.items) && !r.json.items.some((x) => x.id === S1.id), r.json);
+r = await req("GET", `/users/${b.id}/posts?limit=20`, { token: b.token });
+check("own users/:id/posts omits deleted", r.status === 200 && Array.isArray(r.json.items) && !r.json.items.some((x) => x.id === S1.id), r.json);
 r = await req("GET", `/posts/${S1.id}/comments`, { token: a.token });
 check("comments on deleted post 404", r.status === 404, r);
 

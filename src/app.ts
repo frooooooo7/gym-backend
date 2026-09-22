@@ -78,6 +78,16 @@ export const createApp = () => {
 
   app.use(requestContext);
 
+  // CORS must run before the static upload mounts: Flutter web loads images
+  // via fetch, so `/uploads/*` responses need Access-Control-Allow-Origin too.
+  // Dev: allow all origins. Prod: whitelist via CORS_ORIGIN env var (comma-separated).
+  const corsOrigin = isDev
+    ? true
+    : env.corsOrigin
+      ? env.corsOrigin.split(",").map((s) => s.trim())
+      : false;
+  app.use(cors({ origin: corsOrigin, exposedHeaders: [REQUEST_ID_HEADER] }));
+
   ensureExerciseImagesDir();
   const exerciseImagesDir = path.join(
     process.cwd(),
@@ -107,7 +117,7 @@ export const createApp = () => {
   );
 
   app.use(compression());
-  // CORS (below) is the actual cross-origin gatekeeper for this API — Helmet's
+  // CORS (above) is the actual cross-origin gatekeeper for this API — Helmet's
   // default same-origin CORP would silently block browsers from reading
   // responses across origins even when CORS allows the request (e.g. Flutter
   // web's dev server port vs this API's port), so relax it to cross-origin.
@@ -121,14 +131,6 @@ export const createApp = () => {
       hsts: isDev ? false : undefined,
     }),
   );
-
-  // Dev: allow all origins. Prod: whitelist via CORS_ORIGIN env var (comma-separated).
-  const corsOrigin = isDev
-    ? true
-    : env.corsOrigin
-      ? env.corsOrigin.split(",").map((s) => s.trim())
-      : false;
-  app.use(cors({ origin: corsOrigin, exposedHeaders: [REQUEST_ID_HEADER] }));
 
   app.use(express.json({ limit: "1mb" }));
 

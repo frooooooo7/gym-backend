@@ -23,6 +23,8 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 
 COPY --from=builder /app/dist ./dist
+# Bundled system exercise illustrations served under /static/exercise-images.
+COPY public ./public
 
 # Upload directories must exist in the image and belong to `node`: a fresh
 # named volume mounted at /app/uploads copies this content and ownership on

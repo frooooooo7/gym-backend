@@ -24,6 +24,7 @@ import {
 import { authRouter } from "./modules/auth/auth.routes.js";
 import { exercisesRouter } from "./modules/exercises/exercises.routes.js";
 import { ensureExerciseImagesDir } from "./modules/exercises/exercises.image-upload.js";
+import { SYSTEM_EXERCISE_IMAGES_URL_PREFIX } from "./modules/exercises/system-exercise-images.js";
 import { healthRouter } from "./modules/health/health.routes.js";
 import { trainingHistoryRouter } from "./modules/training-history/training-history.routes.js";
 import { trainingPlansRouter } from "./modules/training-plans/training-plans.routes.js";
@@ -101,6 +102,17 @@ export const createApp = () => {
       immutable: true,
       etag: false,
       lastModified: false,
+    }),
+  );
+
+  // Bundled system exercise illustrations (see system-exercise-images.ts).
+  // Committed to the repo, not the uploads volume; file names are stable ids,
+  // so cache for a week rather than forever.
+  app.use(
+    SYSTEM_EXERCISE_IMAGES_URL_PREFIX,
+    express.static(path.join(process.cwd(), "public", "exercise-images"), {
+      maxAge: "7d",
+      etag: false,
     }),
   );
 

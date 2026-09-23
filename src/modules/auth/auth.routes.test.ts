@@ -46,6 +46,7 @@ interface FakeUser {
   email: string;
   first_name: string;
   last_name: string;
+  onboarding_completed: boolean;
   token_version: number;
   password_hash: string;
   avatar_url: string | null;
@@ -60,6 +61,7 @@ const publicCols = (u: FakeUser) => ({
   email: u.email,
   first_name: u.first_name,
   last_name: u.last_name,
+  onboarding_completed: u.onboarding_completed,
   token_version: u.token_version,
 });
 
@@ -91,6 +93,7 @@ const fakeDb = (sql: string, params: unknown[] = []) => {
       password_hash: params[1] as string,
       first_name: params[2] as string,
       last_name: params[3] as string,
+      onboarding_completed: false,
       token_version: 0,
       avatar_url: null,
     };
@@ -127,6 +130,7 @@ const seedUser = (overrides: Partial<FakeUser> = {}): FakeUser => {
     email: EMAIL,
     first_name: "Jan",
     last_name: "Kowalski",
+    onboarding_completed: true,
     token_version: 0,
     password_hash: OLD_HASH,
     avatar_url: null,
@@ -193,7 +197,7 @@ describe("requireAuth token revocation", () => {
     seedUser();
     const res = await request(app).get("/auth/me").set(bearer(tokenFor(USER_ID)));
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ id: USER_ID, email: EMAIL, firstName: "Jan", lastName: "Kowalski" });
+    expect(res.body).toEqual({ id: USER_ID, email: EMAIL, firstName: "Jan", lastName: "Kowalski", onboardingCompleted: true });
   });
 
   it("rejects a legacy token without tv once token_version > 0", async () => {
@@ -251,7 +255,7 @@ describe("login / register tokens carry tv", () => {
     const res = await request(app).post("/auth/login").send({ email: EMAIL, password: OLD_PASSWORD });
     expect(res.status).toBe(200);
     expect(Object.keys(res.body).sort()).toEqual(["token", "user"]);
-    expect(res.body.user).toEqual({ id: USER_ID, email: EMAIL, firstName: "Jan", lastName: "Kowalski" });
+    expect(res.body.user).toEqual({ id: USER_ID, email: EMAIL, firstName: "Jan", lastName: "Kowalski", onboardingCompleted: true });
     expect(decodeTv(res.body.token)).toBe(3);
     const me = await request(app).get("/auth/me").set(bearer(res.body.token));
     expect(me.status).toBe(200);
@@ -262,7 +266,12 @@ describe("login / register tokens carry tv", () => {
       .post("/auth/register")
       .send({ email: "new@gym.com", password: "Passw0rdX", firstName: "Anna", lastName: "Nowak" });
     expect(res.status).toBe(201);
-    expect(res.body.user).toMatchObject({ email: "new@gym.com", firstName: "Anna", lastName: "Nowak" });
+    expect(res.body.user).toMatchObject({
+      email: "new@gym.com",
+      firstName: "Anna",
+      lastName: "Nowak",
+      onboardingCompleted: false,
+    });
     expect(decodeTv(res.body.token)).toBe(0);
   });
 });
@@ -285,7 +294,7 @@ describe("POST /auth/change-password", () => {
       .set(bearer(oldToken))
       .send({ currentPassword: OLD_PASSWORD, newPassword: NEW_PASSWORD });
     expect(res.status).toBe(200);
-    expect(res.body.user).toEqual({ id: USER_ID, email: EMAIL, firstName: "Jan", lastName: "Kowalski" });
+    expect(res.body.user).toEqual({ id: USER_ID, email: EMAIL, firstName: "Jan", lastName: "Kowalski", onboardingCompleted: true });
     expect(decodeTv(res.body.token)).toBe(1);
     expect(bcrypt.compareSync(NEW_PASSWORD, users.get(USER_ID)!.password_hash)).toBe(true);
 
@@ -401,7 +410,7 @@ describe("POST /auth/logout-all", () => {
     const oldToken = tokenFor(USER_ID, 4);
     const res = await request(app).post("/auth/logout-all").set(bearer(oldToken));
     expect(res.status).toBe(200);
-    expect(res.body.user).toEqual({ id: USER_ID, email: EMAIL, firstName: "Jan", lastName: "Kowalski" });
+    expect(res.body.user).toEqual({ id: USER_ID, email: EMAIL, firstName: "Jan", lastName: "Kowalski", onboardingCompleted: true });
     expect(decodeTv(res.body.token)).toBe(5);
     expect(users.get(USER_ID)!.token_version).toBe(5);
 

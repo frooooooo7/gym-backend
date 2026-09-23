@@ -158,8 +158,9 @@ Auth column: 🔒 = `Authorization: Bearer <jwt>` required.
 | GET | `/training-history/:sessionId` | 🔒 | Timeline detail (ETag / 304). |
 | GET | `/training-sessions` | 🔒 | **v1 only**: alias of `GET /training-history`. |
 | GET | `/training-sessions/:sessionId` | 🔒 | **v1 only**: alias of `GET /training-history/:sessionId`. |
-| GET | `/profile/me` | 🔒 | Own profile with stats. |
-| PATCH | `/profile/me` | 🔒 | `firstName`, `lastName`, `bio`. |
+| GET | `/profile/me` | 🔒 | Own profile with stats, `onboardingCompleted` and private `details`. |
+| PATCH | `/profile/me` | 🔒 | `firstName`, `lastName`, `bio`, `handle` and the `details` fields (see [Profile details & onboarding](#profile-details--onboarding)). |
+| POST | `/profile/me/onboarding/complete` | 🔒 | Mark onboarding done (idempotent) → own profile. |
 | POST | `/profile/me/avatar` | 🔒 | Multipart field `avatar` (≤ 5 MB) → `avatarUrl`. |
 | DELETE | `/profile/me/avatar` | 🔒 | Remove avatar. |
 | GET | `/profile/following` | 🔒 | Who I follow (`limit`, `offset`). |
@@ -588,3 +589,47 @@ All endpoints below require `Authorization: Bearer <jwt>`.
 `DELETE /auth/me` removes, in one transaction: the user, their training plans, their custom exercises, their training sessions (with sets, kudos and comments on them), their tombstones, favourites, follows (both directions), and the kudos and comments they left on other people's posts. Afterwards, the avatar file and the image files of the deleted custom exercises are removed from disk (best effort).
 
 Exception: another user's plan can only use system exercises or its owner's own custom exercises, so it can't normally reference someone else's. If one does anyway (legacy data), that custom exercise is kept with `created_by = NULL`, and so is its image. Other users' session history keeps its exercise snapshots (name, muscles, category); `exercise_id` becomes `NULL`.
+
+## Profile details & onboarding
+
+Every `user` object in auth responses (register, login, `/auth/me`, change-password, logout-all) carries
+`onboardingCompleted`. New accounts start with `false`; the app shows its onboarding (photo, handle,
+body data, goal) until it calls `POST /profile/me/onboarding/complete`. Accounts that existed before
+migration `016_users_profile_details` count as onboarded.
+
+`GET|PATCH /profile/me`, the avatar endpoints and `POST /profile/me/onboarding/complete` return the own
+profile with two extra keys:
+
+```json
+{
+  "onboardingCompleted": true,
+  "details": {
+    "birthDate": "1998-03-15",
+    "gender": "female",
+    "heightCm": 168,
+    "weightKg": 61.5,
+    "trainingGoal": "strength",
+    "experienceLevel": "intermediate",
+    "weeklyTrainingDays": 4
+  }
+}
+```
+
+The details are **private**: `/users/:userId/profile` (even for your own id), the feed and search never
+include them. Each value can be `null` (not given).
+
+`PATCH /profile/me` fields (all optional; `null` clears a detail, a missing key leaves it unchanged):
+
+| Field | Rule | Error |
+|---|---|---|
+| `handle` | trimmed + lowercased, `^[a-z0-9][a-z0-9._]{2,29}$`, unique; not nullable | `400 invalid_handle`, `409 handle_taken` |
+| `birthDate` | `YYYY-MM-DD`, a real day, age 16–100 | `400 invalid_birth_date` |
+| `gender` | `male`, `female`, `other` | `400 invalid_gender` |
+| `heightCm` | integer 100–250 | `400 invalid_height` |
+| `weightKg` | number 30–300, rounded to 0.1 | `400 invalid_weight` |
+| `trainingGoal` | `strength`, `muscle`, `fat_loss`, `general` | `400 invalid_training_goal` |
+| `experienceLevel` | `beginner`, `intermediate`, `advanced` | `400 invalid_experience_level` |
+| `weeklyTrainingDays` | integer 1–7 | `400 invalid_weekly_training_days` |
+
+A body without any known field returns `400 no_fields_to_update`. The details live on the `users` row,
+so account deletion removes them too.

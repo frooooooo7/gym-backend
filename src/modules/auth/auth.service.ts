@@ -36,6 +36,7 @@ const formatUser = (row: UserRow) => ({
   email: row.email,
   firstName: row.first_name,
   lastName: row.last_name,
+  onboardingCompleted: row.onboarding_completed === true,
 });
 
 type AuthResponse = { token: string; user: ReturnType<typeof formatUser> };

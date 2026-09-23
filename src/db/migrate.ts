@@ -422,6 +422,33 @@ const MIGRATIONS: Migration[] = [
       ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0;
     `,
   },
+  {
+    // Private body/goal data filled in during onboarding (NULL = not given);
+    // only /profile/me* responses expose it. Existing accounts count as
+    // onboarded so they never see the new flow.
+    name: "016_users_profile_details",
+    sql: `
+      ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS birth_date DATE,
+        ADD COLUMN IF NOT EXISTS gender TEXT
+          CHECK (gender IN ('male', 'female', 'other')),
+        ADD COLUMN IF NOT EXISTS height_cm SMALLINT
+          CHECK (height_cm BETWEEN 100 AND 250),
+        ADD COLUMN IF NOT EXISTS weight_kg NUMERIC(4,1)
+          CHECK (weight_kg BETWEEN 30 AND 300),
+        ADD COLUMN IF NOT EXISTS training_goal TEXT
+          CHECK (training_goal IN ('strength', 'muscle', 'fat_loss', 'general')),
+        ADD COLUMN IF NOT EXISTS experience_level TEXT
+          CHECK (experience_level IN ('beginner', 'intermediate', 'advanced')),
+        ADD COLUMN IF NOT EXISTS weekly_training_days SMALLINT
+          CHECK (weekly_training_days BETWEEN 1 AND 7),
+        ADD COLUMN IF NOT EXISTS onboarding_completed_at TIMESTAMPTZ;
+
+      UPDATE users
+      SET onboarding_completed_at = created_at
+      WHERE onboarding_completed_at IS NULL;
+    `,
+  },
 ];
 
 const ADVISORY_LOCK_ID = 3_742_116_919;

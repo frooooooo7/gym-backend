@@ -1,4 +1,5 @@
-// Smoke test: account & security — token_version, change-password, logout-all, account deletion, limiters (real server + Postgres).
+// Smoke test: account & security — token_version, change-password, logout-all, account deletion, limiters,
+// onboarding profile details (real server + Postgres).
 // Standalone: BASE=http://localhost:3101 DATABASE_URL=... [API_PREFIX=/api/v1] [SMOKE_BACKEND_DIR=<server cwd>] node scripts/smoke/account.mjs
 // Needs a fresh server (in-memory rate limiters) — see run-all.mjs.
 import { apiPath, BACKEND_DIR, BASE, closeDb, sql } from "./lib.mjs";
@@ -78,12 +79,43 @@ const a = await register("Ala", "Haslowa");
 const b = await register("Bogdan", "Usuwany");
 const c = await register("Cezary", "Zostaje");
 
+// ================= onboarding / private profile details =================
+check("migration 016 applied", await sql("SELECT count(*) FROM _migrations WHERE name='016_users_profile_details'") === "1");
+let r = await req("GET", "/auth/me", { token: c.token });
+check("new account → onboardingCompleted false", r.status === 200 && r.json.onboardingCompleted === false, r);
+const cHandle = `cez_${stamp}`;
+r = await req("PATCH", "/profile/me", {
+  token: c.token,
+  body: { handle: cHandle.toUpperCase(), birthDate: "1995-06-15", gender: "male", heightCm: 181, weightKg: 79.44, trainingGoal: "strength", experienceLevel: "intermediate", weeklyTrainingDays: 4 },
+});
+check(
+  "PATCH /profile/me stores handle + details (weight rounded to 0.1)",
+  r.status === 200 && r.json.handle === cHandle && r.json.onboardingCompleted === false &&
+    JSON.stringify(r.json.details) === JSON.stringify({ birthDate: "1995-06-15", gender: "male", heightCm: 181, weightKg: 79.4, trainingGoal: "strength", experienceLevel: "intermediate", weeklyTrainingDays: 4 }),
+  r,
+);
+r = await req("PATCH", "/profile/me", { token: b.token, body: { handle: cHandle } });
+check("duplicate handle → 409 handle_taken", r.status === 409 && r.json.error === "handle_taken", r);
+r = await req("PATCH", "/profile/me", { token: c.token, body: { birthDate: new Date().toISOString().slice(0, 10) } });
+check("too young → 400 invalid_birth_date", r.status === 400 && r.json.error === "invalid_birth_date", r);
+r = await req("GET", `/users/${c.id}/profile`, { token: b.token });
+check("other users never see details", r.status === 200 && !("details" in r.json) && !("onboardingCompleted" in r.json), r);
+r = await req("PATCH", "/profile/me", { token: c.token, body: { weightKg: null } });
+check("null clears only that detail", r.status === 200 && r.json.details.weightKg === null && r.json.details.heightCm === 181, r);
+r = await req("POST", "/profile/me/onboarding/complete", { token: c.token });
+check("complete onboarding → own profile with onboardingCompleted", r.status === 200 && r.json.onboardingCompleted === true && r.json.id === c.id, r);
+const completedAt = await sql(`SELECT onboarding_completed_at FROM users WHERE id='${c.id}'`);
+r = await req("POST", "/profile/me/onboarding/complete", { token: c.token });
+check("complete onboarding is idempotent", r.status === 200 && await sql(`SELECT onboarding_completed_at FROM users WHERE id='${c.id}'`) === completedAt, r);
+r = await req("GET", "/auth/me", { token: c.token });
+check("/auth/me reflects onboardingCompleted", r.status === 200 && r.json.onboardingCompleted === true, r);
+
 // ================= token_version / change-password =================
-let r = await login(a.email, PASSWORD);
+r = await login(a.email, PASSWORD);
 check("login token has tv 0", r.status === 200 && tv(r.json.token) === 0 && Object.keys(r.json).sort().join() === "token,user", r);
 const aLogin2 = r.json.token;
 r = await req("GET", "/auth/me", { token: a.token });
-check("GET /auth/me unchanged shape", r.status === 200 && Object.keys(r.json).sort().join() === "email,firstName,id,lastName", r);
+check("GET /auth/me unchanged shape", r.status === 200 && Object.keys(r.json).sort().join() === "email,firstName,id,lastName,onboardingCompleted", r);
 
 r = await req("POST", "/auth/change-password", { body: { currentPassword: PASSWORD, newPassword: NEW_PASSWORD } });
 check("change-password 401 unauthorized without token", r.status === 401 && r.json.error === "unauthorized", r);
@@ -106,7 +138,7 @@ check("change-password same 400 password_unchanged", r.status === 400 && r.json.
 check("failed attempts did not bump version", await sql(`SELECT token_version FROM users WHERE id='${a.id}'`) === "0");
 
 r = await req("POST", "/auth/change-password", { token: a.token, body: { currentPassword: PASSWORD, newPassword: NEW_PASSWORD } });
-check("change-password 200 {token,user}", r.status === 200 && Object.keys(r.json).sort().join() === "token,user" && r.json.user.id === a.id && r.json.user.email === a.email && Object.keys(r.json.user).sort().join() === "email,firstName,id,lastName", r);
+check("change-password 200 {token,user}", r.status === 200 && Object.keys(r.json).sort().join() === "token,user" && r.json.user.id === a.id && r.json.user.email === a.email && Object.keys(r.json.user).sort().join() === "email,firstName,id,lastName,onboardingCompleted", r);
 const aChanged = r.json.token;
 check("new token has tv 1", tv(aChanged) === 1);
 check("DB token_version = 1", await sql(`SELECT token_version FROM users WHERE id='${a.id}'`) === "1");

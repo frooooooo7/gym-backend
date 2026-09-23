@@ -44,6 +44,37 @@ const profileRow = {
   avatar_url: null,
 };
 
+/** `/profile/me*` rows also carry the private details. */
+const ownProfileRow = {
+  ...profileRow,
+  birth_date: null,
+  gender: null,
+  height_cm: null,
+  weight_kg: null,
+  training_goal: null,
+  experience_level: null,
+  weekly_training_days: null,
+  onboarding_completed: true,
+};
+
+const emptyDetails = {
+  birthDate: null,
+  gender: null,
+  heightCm: null,
+  weightKg: null,
+  trainingGoal: null,
+  experienceLevel: null,
+  weeklyTrainingDays: null,
+};
+
+/** `YYYY-MM-01` of the current month [years] ago (UTC) — date-independent ages. */
+const isoYearsAgo = (years: number) => {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear() - years, now.getUTCMonth(), 1))
+    .toISOString()
+    .slice(0, 10);
+};
+
 const statsRow = {
   following_count: 3,
   followers_count: 5,
@@ -94,7 +125,7 @@ describe("profile routes", () => {
 
   it("GET /profile/me returns own profile", async () => {
     whenSqlContains({
-      "FROM users": { rows: [profileRow] },
+      "FROM users": { rows: [ownProfileRow] },
       following_count: { rows: [statsRow] },
     });
 
@@ -115,13 +146,52 @@ describe("profile routes", () => {
       isOwnProfile: true,
       isFollowing: false,
       isFollowedBy: false,
+      onboardingCompleted: true,
+      details: emptyDetails,
+    });
+    const sql = String(findCall("FROM users")?.[0]);
+    expect(sql).toContain("to_char(users.birth_date, 'YYYY-MM-DD') AS birth_date");
+    expect(sql).toContain("users.weight_kg::float8 AS weight_kg");
+  });
+
+  it("GET /profile/me returns filled details", async () => {
+    whenSqlContains({
+      "FROM users": {
+        rows: [
+          {
+            ...ownProfileRow,
+            birth_date: "1998-03-15",
+            gender: "female",
+            height_cm: 168,
+            weight_kg: 61.5,
+            training_goal: "strength",
+            experience_level: "intermediate",
+            weekly_training_days: 4,
+            onboarding_completed: false,
+          },
+        ],
+      },
+      following_count: { rows: [statsRow] },
+    });
+
+    const res = await request(app).get("/profile/me").set(authHeaders());
+    expect(res.status).toBe(200);
+    expect(res.body.onboardingCompleted).toBe(false);
+    expect(res.body.details).toEqual({
+      birthDate: "1998-03-15",
+      gender: "female",
+      heightCm: 168,
+      weightKg: 61.5,
+      trainingGoal: "strength",
+      experienceLevel: "intermediate",
+      weeklyTrainingDays: 4,
     });
   });
 
   it("PATCH /profile/me updates bio", async () => {
     whenSqlContains({
       "UPDATE users": {
-        rows: [{ ...profileRow, bio: "Nowy opis" }],
+        rows: [{ ...ownProfileRow, bio: "Nowy opis" }],
       },
       following_count: { rows: [statsRow] },
     });
@@ -136,6 +206,7 @@ describe("profile routes", () => {
     expect(res.body.isOwnProfile).toBe(true);
     expect(res.body.isFollowing).toBe(false);
     expect(res.body.isFollowedBy).toBe(false);
+    expect(res.body.details).toEqual(emptyDetails);
 
     const update = findCall("UPDATE users");
     expect(String(update?.[0])).toContain("bio = $2");
@@ -146,7 +217,7 @@ describe("profile routes", () => {
 
   it("PATCH /profile/me stores empty bio as null", async () => {
     whenSqlContains({
-      "UPDATE users": { rows: [{ ...profileRow, bio: null }] },
+      "UPDATE users": { rows: [{ ...ownProfileRow, bio: null }] },
       following_count: { rows: [statsRow] },
     });
 
@@ -173,7 +244,7 @@ describe("profile routes", () => {
   it("PATCH /profile/me updates trimmed first and last name without touching handle", async () => {
     whenSqlContains({
       "UPDATE users": {
-        rows: [{ ...profileRow, first_name: "Janusz", last_name: "Nowak" }],
+        rows: [{ ...ownProfileRow, first_name: "Janusz", last_name: "Nowak" }],
       },
       following_count: { rows: [statsRow] },
     });
@@ -210,7 +281,31 @@ describe("profile routes", () => {
     [{ lastName: "y".repeat(51) }, "invalid_last_name"],
     [{ lastName: false }, "invalid_last_name"],
     [{}, "no_fields_to_update"],
-    [{ handle: "new.handle" }, "no_fields_to_update"],
+    [{ nickname: "new.handle" }, "no_fields_to_update"],
+    [{ handle: "ab" }, "invalid_handle"],
+    [{ handle: "x".repeat(31) }, "invalid_handle"],
+    [{ handle: "_jan" }, "invalid_handle"],
+    [{ handle: "jan kowalski" }, "invalid_handle"],
+    [{ handle: "jan!" }, "invalid_handle"],
+    [{ handle: null }, "invalid_handle"],
+    [{ birthDate: isoYearsAgo(10) }, "invalid_birth_date"],
+    [{ birthDate: isoYearsAgo(101) }, "invalid_birth_date"],
+    [{ birthDate: "2001-02-30" }, "invalid_birth_date"],
+    [{ birthDate: "15.03.1998" }, "invalid_birth_date"],
+    [{ birthDate: 19980315 }, "invalid_birth_date"],
+    [{ gender: "unknown" }, "invalid_gender"],
+    [{ heightCm: 99 }, "invalid_height"],
+    [{ heightCm: 251 }, "invalid_height"],
+    [{ heightCm: 180.5 }, "invalid_height"],
+    [{ heightCm: "180" }, "invalid_height"],
+    [{ weightKg: 29.9 }, "invalid_weight"],
+    [{ weightKg: 300.1 }, "invalid_weight"],
+    [{ weightKg: "80" }, "invalid_weight"],
+    [{ trainingGoal: "cardio" }, "invalid_training_goal"],
+    [{ experienceLevel: "pro" }, "invalid_experience_level"],
+    [{ weeklyTrainingDays: 0 }, "invalid_weekly_training_days"],
+    [{ weeklyTrainingDays: 8 }, "invalid_weekly_training_days"],
+    [{ weeklyTrainingDays: 2.5 }, "invalid_weekly_training_days"],
   ])("PATCH /profile/me with %j returns 400 %s", async (body, code) => {
     const res = await request(app)
       .patch("/profile/me")
@@ -226,6 +321,178 @@ describe("profile routes", () => {
     const res = await request(app).patch("/profile/me").set(authHeaders());
     expect(res.status).toBe(400);
     expect(res.body.error).toBe("no_fields_to_update");
+  });
+
+  it("PATCH /profile/me stores handle and details, normalized", async () => {
+    const birthDate = isoYearsAgo(28);
+    whenSqlContains({
+      "UPDATE users": {
+        rows: [
+          {
+            ...ownProfileRow,
+            handle: "jan.silny",
+            birth_date: birthDate,
+            gender: "male",
+            height_cm: 182,
+            weight_kg: 82.5,
+            training_goal: "muscle",
+            experience_level: "beginner",
+            weekly_training_days: 3,
+          },
+        ],
+      },
+      following_count: { rows: [statsRow] },
+    });
+
+    const res = await request(app)
+      .patch("/profile/me")
+      .set(authHeaders())
+      .send({
+        handle: "  Jan.Silny ",
+        birthDate,
+        gender: "male",
+        heightCm: 182,
+        weightKg: 82.46,
+        trainingGoal: "muscle",
+        experienceLevel: "beginner",
+        weeklyTrainingDays: 3,
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.handle).toBe("jan.silny");
+    expect(res.body.details).toEqual({
+      birthDate,
+      gender: "male",
+      heightCm: 182,
+      weightKg: 82.5,
+      trainingGoal: "muscle",
+      experienceLevel: "beginner",
+      weeklyTrainingDays: 3,
+    });
+
+    const update = findCall("UPDATE users");
+    const sql = String(update?.[0]);
+    expect(sql).toContain("handle = $2");
+    expect(sql).toContain("birth_date = $3");
+    expect(sql).toContain("weekly_training_days = $9");
+    expect(sql).not.toContain("first_name =");
+    expect(update?.[1]).toEqual([
+      USER_ID,
+      "jan.silny",
+      birthDate,
+      "male",
+      182,
+      82.5,
+      "muscle",
+      "beginner",
+      3,
+    ]);
+  });
+
+  it("PATCH /profile/me clears details sent as null", async () => {
+    whenSqlContains({
+      "UPDATE users": { rows: [ownProfileRow] },
+      following_count: { rows: [statsRow] },
+    });
+
+    const res = await request(app)
+      .patch("/profile/me")
+      .set(authHeaders())
+      .send({ weightKg: null, gender: null });
+
+    expect(res.status).toBe(200);
+    const update = findCall("UPDATE users");
+    expect(String(update?.[0])).toContain("gender = $2");
+    expect(String(update?.[0])).toContain("weight_kg = $3");
+    expect(update?.[1]).toEqual([USER_ID, null, null]);
+  });
+
+  it("PATCH /profile/me returns 409 handle_taken on a duplicate handle", async () => {
+    mockQuery.mockImplementation((sql: string) =>
+      String(sql).includes("UPDATE users")
+        ? Promise.reject(
+            Object.assign(new Error("duplicate key"), {
+              code: "23505",
+              constraint: "users_handle_unique_idx",
+            }),
+          )
+        : Promise.resolve({ rows: [statsRow], rowCount: 1 }),
+    );
+
+    const res = await request(app)
+      .patch("/profile/me")
+      .set(authHeaders())
+      .send({ handle: "anna.nowak" });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe("handle_taken");
+  });
+
+  it("POST /profile/me/onboarding/complete marks onboarding done", async () => {
+    whenSqlContains({
+      "UPDATE users": { rows: [ownProfileRow] },
+      following_count: { rows: [statsRow] },
+    });
+
+    const res = await request(app)
+      .post("/profile/me/onboarding/complete")
+      .set(authHeaders());
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      id: USER_ID,
+      onboardingCompleted: true,
+      details: emptyDetails,
+    });
+    const update = findCall("UPDATE users");
+    expect(String(update?.[0])).toContain(
+      "onboarding_completed_at = COALESCE(onboarding_completed_at, now())",
+    );
+    expect(update?.[1]).toEqual([USER_ID]);
+  });
+
+  it("POST /profile/me/onboarding/complete returns 404 when user missing", async () => {
+    whenSqlContains({ following_count: { rows: [statsRow] } });
+
+    const res = await request(app)
+      .post("/profile/me/onboarding/complete")
+      .set(authHeaders());
+
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe("user_not_found");
+  });
+
+  it("POST /profile/me/onboarding/complete returns 401 without auth", async () => {
+    const res = await request(app).post("/profile/me/onboarding/complete");
+    expect(res.status).toBe(401);
+  });
+
+  it("GET /users/:userId/profile never exposes private details", async () => {
+    whenSqlContains({
+      "FROM users": {
+        rows: [
+          {
+            ...ownProfileRow,
+            id: OTHER_USER_ID,
+            birth_date: "1990-01-01",
+            weight_kg: 90,
+          },
+        ],
+      },
+      following_count: { rows: [statsRow] },
+      "AS is_followed_by": {
+        rows: [{ is_following: false, is_followed_by: false }],
+      },
+    });
+
+    const res = await request(app)
+      .get(`/users/${OTHER_USER_ID}/profile`)
+      .set(authHeaders());
+
+    expect(res.status).toBe(200);
+    expect(res.body).not.toHaveProperty("details");
+    expect(res.body).not.toHaveProperty("onboardingCompleted");
+    expect(String(findCall("FROM users")?.[0])).not.toContain("birth_date");
   });
 
   it("GET /users/:userId/profile returns other user profile", async () => {

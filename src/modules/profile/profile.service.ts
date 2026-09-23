@@ -2,12 +2,13 @@ import path from "node:path";
 
 import { AppError } from "../../common/errors.js";
 import { logger, serializeError } from "../../common/logger.js";
-import { isForeignKeyViolation } from "../../common/pg-errors.js";
+import { isForeignKeyViolation, isUniqueViolation } from "../../common/pg-errors.js";
 import { diskPathFromPublicUrl, safeUnlink } from "../../common/uploads.js";
 import { AVATARS_PUBLIC_PREFIX } from "./profile.avatar-upload.js";
 import {
   profileRepository,
   type FollowingUserRow,
+  type OwnProfileRow,
   type ProfileRelationshipRow,
   type ProfileStatsRow,
   type ProfileUpdateFields,
@@ -50,6 +51,21 @@ const formatProfile = (
   isFollowedBy: isOwnProfile ? false : relationship.is_followed_by,
 });
 
+/** /profile/me* only — the details are private to their owner. */
+const formatOwnProfile = (row: OwnProfileRow, stats: ProfileStatsRow) => ({
+  ...formatProfile(row, stats, true),
+  onboardingCompleted: row.onboarding_completed === true,
+  details: {
+    birthDate: row.birth_date,
+    gender: row.gender,
+    heightCm: row.height_cm,
+    weightKg: row.weight_kg,
+    trainingGoal: row.training_goal,
+    experienceLevel: row.experience_level,
+    weeklyTrainingDays: row.weekly_training_days,
+  },
+});
+
 /** Best-effort removal; only files we manage under /uploads/avatars/ are touched. */
 const removeManagedAvatar = async (avatarUrl: string | null): Promise<void> => {
   if (!avatarUrl || !avatarUrl.startsWith(AVATARS_PUBLIC_PREFIX)) return;
@@ -82,13 +98,13 @@ const ensureUserExists = async (userId: string): Promise<void> => {
 export const profileService = {
   getOwnProfile: async (userId: string) => {
     const [row, stats] = await Promise.all([
-      profileRepository.findProfileById(userId),
+      profileRepository.findOwnProfileById(userId),
       profileRepository.findStatsByUserId(userId),
     ]);
     if (!row) {
       throw new AppError(404, "user_not_found");
     }
-    return formatProfile(row, stats, true);
+    return formatOwnProfile(row, stats);
   },
 
   getUserProfile: async (viewerId: string, targetUserId: string) => {
@@ -108,13 +124,29 @@ export const profileService = {
 
   updateProfile: async (userId: string, fields: ProfileUpdateFields) => {
     const [row, stats] = await Promise.all([
-      profileRepository.updateProfile(userId, fields),
+      profileRepository.updateProfile(userId, fields).catch((e: unknown) => {
+        if (isUniqueViolation(e, "users_handle_unique_idx")) {
+          throw new AppError(409, "handle_taken");
+        }
+        throw e;
+      }),
       profileRepository.findStatsByUserId(userId),
     ]);
     if (!row) {
       throw new AppError(404, "user_not_found");
     }
-    return formatProfile(row, stats, true);
+    return formatOwnProfile(row, stats);
+  },
+
+  completeOnboarding: async (userId: string) => {
+    const [row, stats] = await Promise.all([
+      profileRepository.completeOnboarding(userId),
+      profileRepository.findStatsByUserId(userId),
+    ]);
+    if (!row) {
+      throw new AppError(404, "user_not_found");
+    }
+    return formatOwnProfile(row, stats);
   },
 
   uploadAvatar: async (
@@ -139,7 +171,7 @@ export const profileService = {
     }
 
     const stats = await profileRepository.findStatsByUserId(userId);
-    return formatProfile(row, stats, true);
+    return formatOwnProfile(row, stats);
   },
 
   deleteAvatar: async (userId: string) => {
@@ -151,7 +183,7 @@ export const profileService = {
       throw new AppError(404, "user_not_found");
     }
     await removeManagedAvatar(row.previous_avatar_url);
-    return formatProfile(row, stats, true);
+    return formatOwnProfile(row, stats);
   },
 
   follow: async (viewerId: string, targetUserId: string) => {

@@ -15,11 +15,13 @@ export const profileController = {
   updateMe: asyncHandler(async (req: Request, res: Response) => {
     const userId = (req as AuthRequest).auth.sub;
     const body = req.body as ProfileUpdateInput;
-    const profile = await profileService.updateProfile(userId, {
-      firstName: body.firstName,
-      lastName: body.lastName,
-      bio: body.bio,
-    });
+    const profile = await profileService.updateProfile(userId, body);
+    res.status(200).json(profile);
+  }),
+
+  completeOnboarding: asyncHandler(async (req: Request, res: Response) => {
+    const userId = (req as AuthRequest).auth.sub;
+    const profile = await profileService.completeOnboarding(userId);
     res.status(200).json(profile);
   }),
 

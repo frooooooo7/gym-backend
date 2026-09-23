@@ -1,4 +1,9 @@
 import { requirePool } from "../../db/require-pool.js";
+import type {
+  ExperienceLevel,
+  Gender,
+  TrainingGoal,
+} from "./profile.schemas.js";
 
 export interface ProfileUserRow {
   id: string;
@@ -9,7 +14,20 @@ export interface ProfileUserRow {
   avatar_url: string | null;
 }
 
-export interface ProfileUserWithPreviousAvatarRow extends ProfileUserRow {
+/** Own profile — adds the private details only /profile/me* may return. */
+export interface OwnProfileRow extends ProfileUserRow {
+  /** `YYYY-MM-DD` */
+  birth_date: string | null;
+  gender: Gender | null;
+  height_cm: number | null;
+  weight_kg: number | null;
+  training_goal: TrainingGoal | null;
+  experience_level: ExperienceLevel | null;
+  weekly_training_days: number | null;
+  onboarding_completed: boolean;
+}
+
+export interface ProfileUserWithPreviousAvatarRow extends OwnProfileRow {
   previous_avatar_url: string | null;
 }
 
@@ -37,9 +55,40 @@ export interface ProfileUpdateFields {
   firstName?: string;
   lastName?: string;
   bio?: string | null;
+  handle?: string;
+  /** `YYYY-MM-DD` */
+  birthDate?: string | null;
+  gender?: Gender | null;
+  heightCm?: number | null;
+  weightKg?: number | null;
+  trainingGoal?: TrainingGoal | null;
+  experienceLevel?: ExperienceLevel | null;
+  weeklyTrainingDays?: number | null;
 }
 
+const UPDATABLE_COLUMNS = {
+  firstName: "first_name",
+  lastName: "last_name",
+  bio: "bio",
+  handle: "handle",
+  birthDate: "birth_date",
+  gender: "gender",
+  heightCm: "height_cm",
+  weightKg: "weight_kg",
+  trainingGoal: "training_goal",
+  experienceLevel: "experience_level",
+  weeklyTrainingDays: "weekly_training_days",
+} as const satisfies Record<keyof ProfileUpdateFields, string>;
+
 const PROFILE_COLUMNS = "id, first_name, last_name, handle, bio, avatar_url";
+
+/** Columns of [OwnProfileRow] read from table/alias [t]. */
+const ownProfileColumns = (t: string) =>
+  `${t}.id, ${t}.first_name, ${t}.last_name, ${t}.handle, ${t}.bio, ${t}.avatar_url,
+   to_char(${t}.birth_date, 'YYYY-MM-DD') AS birth_date, ${t}.gender, ${t}.height_cm,
+   ${t}.weight_kg::float8 AS weight_kg, ${t}.training_goal, ${t}.experience_level,
+   ${t}.weekly_training_days,
+   (${t}.onboarding_completed_at IS NOT NULL) AS onboarding_completed`;
 
 export const profileRepository = {
   findProfileById: async (userId: string): Promise<ProfileUserRow | undefined> => {
@@ -51,6 +100,17 @@ export const profileRepository = {
       [userId],
     );
     return rows[0] as ProfileUserRow | undefined;
+  },
+
+  findOwnProfileById: async (userId: string): Promise<OwnProfileRow | undefined> => {
+    const pool = requirePool();
+    const { rows } = await pool.query(
+      `SELECT ${ownProfileColumns("users")}
+       FROM users
+       WHERE id = $1`,
+      [userId],
+    );
+    return rows[0] as OwnProfileRow | undefined;
   },
 
   findStatsByUserId: async (userId: string): Promise<ProfileStatsRow> => {
@@ -90,29 +150,41 @@ export const profileRepository = {
   updateProfile: async (
     userId: string,
     fields: ProfileUpdateFields,
-  ): Promise<ProfileUserRow | undefined> => {
+  ): Promise<OwnProfileRow | undefined> => {
     const pool = requirePool();
     const assignments: string[] = [];
     const values: unknown[] = [userId];
-    const push = (column: string, value: unknown) => {
+    for (const [field, column] of Object.entries(UPDATABLE_COLUMNS)) {
+      const value = fields[field as keyof ProfileUpdateFields];
+      if (value === undefined) continue;
       values.push(value);
       assignments.push(`${column} = $${values.length}`);
-    };
-    if (fields.firstName !== undefined) push("first_name", fields.firstName);
-    if (fields.lastName !== undefined) push("last_name", fields.lastName);
-    if (fields.bio !== undefined) push("bio", fields.bio);
+    }
     if (assignments.length === 0) {
-      return profileRepository.findProfileById(userId);
+      return profileRepository.findOwnProfileById(userId);
     }
 
     const { rows } = await pool.query(
       `UPDATE users
        SET ${assignments.join(", ")}
        WHERE id = $1
-       RETURNING ${PROFILE_COLUMNS}`,
+       RETURNING ${ownProfileColumns("users")}`,
       values,
     );
-    return rows[0] as ProfileUserRow | undefined;
+    return rows[0] as OwnProfileRow | undefined;
+  },
+
+  /** Idempotent — keeps the first completion time. */
+  completeOnboarding: async (userId: string): Promise<OwnProfileRow | undefined> => {
+    const pool = requirePool();
+    const { rows } = await pool.query(
+      `UPDATE users
+       SET onboarding_completed_at = COALESCE(onboarding_completed_at, now())
+       WHERE id = $1
+       RETURNING ${ownProfileColumns("users")}`,
+      [userId],
+    );
+    return rows[0] as OwnProfileRow | undefined;
   },
 
   /** Sets avatar_url and returns the updated row plus the value it replaced. */
@@ -126,7 +198,7 @@ export const profileRepository = {
        SET avatar_url = $2
        FROM users prev
        WHERE u.id = $1 AND prev.id = u.id
-       RETURNING u.id, u.first_name, u.last_name, u.handle, u.bio, u.avatar_url,
+       RETURNING ${ownProfileColumns("u")},
                  prev.avatar_url AS previous_avatar_url`,
       [userId, avatarUrl],
     );

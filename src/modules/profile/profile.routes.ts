@@ -42,6 +42,12 @@ profileRouter.patch(
 );
 
 profileRouter.post(
+  "/profile/me/onboarding/complete",
+  requireAuth,
+  profileController.completeOnboarding,
+);
+
+profileRouter.post(
   "/profile/me/avatar",
   requireAuth,
   handleAvatarUpload,

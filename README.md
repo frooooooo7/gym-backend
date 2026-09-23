@@ -89,7 +89,7 @@ Make a backup first if the data matters (`docker compose exec postgres pg_dump -
 | `npm run build` / `npm start` | Compile to `dist/` / run `node dist/index.js`. |
 | `npm run migrate` | Apply pending migrations without starting the API (they also run on every start). |
 | `npm run smoke` | End-to-end smoke tests against a real database, see below. |
-| `npm run import:exercise-illustrations` | Convert the generated system exercise illustrations (`../exercise-illustrations/generated/NN.png`, NN = last two digits of the exercise id) to `public/exercise-images/<slug>.webp`. The slugs live in `src/modules/exercises/system-exercise-images.ts`; the output is committed. |
+| `npm run import:exercise-illustrations` | Convert the generated system exercise illustrations (`../exercise-illustrations/generated/NN.png`, NN = last two digits of the exercise id) to `public/exercise-images/<slug>.webp`. Also removes unused files. The slugs live in `src/modules/exercises/system-exercise-images.ts`; the output is committed and the API points system exercises (and past session snapshots) at it on every start. |
 
 ### Smoke tests
 

@@ -106,8 +106,9 @@ export const createApp = () => {
   );
 
   // Bundled system exercise illustrations (see system-exercise-images.ts).
-  // Committed to the repo, not the uploads volume; file names are stable ids,
-  // so cache for a week rather than forever.
+  // Committed to the repo, not the uploads volume. A redrawn image gets a new
+  // slug, but cache for a week rather than forever in case one is replaced
+  // in place.
   app.use(
     SYSTEM_EXERCISE_IMAGES_URL_PREFIX,
     express.static(path.join(process.cwd(), "public", "exercise-images"), {

@@ -1,38 +1,6 @@
 import { logger, serializeError } from "../common/logger.js";
 import { getPool } from "./pool.js";
-import {
-  SYSTEM_EXERCISE_IMAGES_URL_PREFIX,
-  systemExerciseImageSqlValues,
-} from "../modules/exercises/system-exercise-images.js";
-
-/**
- * Points system exercises at the current bundled illustrations. Only bundled
- * images (and empty ones) are replaced, so a manually uploaded photo still
- * wins; session snapshots follow. Add a new migration calling this whenever
- * system-exercise-images.ts changes.
- */
-const refreshSystemExerciseImagesSql = (): string => `
-      WITH images (id, image_url) AS (VALUES
-        ${systemExerciseImageSqlValues()}
-      )
-      UPDATE exercises e
-         SET image_url = images.image_url
-        FROM images
-       WHERE e.id = images.id
-         AND e.is_system
-         AND (e.image_url IS NULL OR e.image_url LIKE '${SYSTEM_EXERCISE_IMAGES_URL_PREFIX}/%')
-         AND e.image_url IS DISTINCT FROM images.image_url;
-
-      UPDATE training_session_exercises tse
-         SET exercise_image_url = e.image_url
-        FROM exercises e
-       WHERE tse.exercise_id = e.id
-         AND e.is_system
-         AND e.image_url LIKE '${SYSTEM_EXERCISE_IMAGES_URL_PREFIX}/%'
-         AND (tse.exercise_image_url IS NULL
-              OR tse.exercise_image_url LIKE '${SYSTEM_EXERCISE_IMAGES_URL_PREFIX}/%')
-         AND tse.exercise_image_url IS DISTINCT FROM e.image_url;
-    `;
+import { syncSystemExerciseImages } from "../modules/exercises/system-exercise-images.js";
 
 interface Migration {
   name: string;
@@ -454,40 +422,6 @@ const MIGRATIONS: Migration[] = [
       ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0;
     `,
   },
-  {
-    // Bundled system exercise illustrations (public/exercise-images). Only
-    // fills empty image_url so a manually uploaded photo wins; past session
-    // snapshots of those exercises get the image too.
-    name: "016_system_exercise_images",
-    sql: `
-      WITH images (id, image_url) AS (VALUES
-        ${systemExerciseImageSqlValues()}
-      )
-      UPDATE exercises e
-         SET image_url = images.image_url
-        FROM images
-       WHERE e.id = images.id AND e.is_system AND e.image_url IS NULL;
-
-      UPDATE training_session_exercises tse
-         SET exercise_image_url = e.image_url
-        FROM exercises e
-       WHERE tse.exercise_id = e.id
-         AND e.is_system
-         AND e.image_url IS NOT NULL
-         AND tse.exercise_image_url IS NULL;
-    `,
-  },
-  {
-    // Swaps the free-exercise-db photos from 016 for the mannequin
-    // illustrations.
-    name: "017_system_exercise_mannequin_images",
-    sql: refreshSystemExerciseImagesSql(),
-  },
-  {
-    // Lateral raise and plank redrawn on the plain dark backdrop.
-    name: "018_system_exercise_images_v2",
-    sql: refreshSystemExerciseImagesSql(),
-  },
 ];
 
 const ADVISORY_LOCK_ID = 3_742_116_919;
@@ -520,6 +454,9 @@ export const runMigrations = async (): Promise<void> => {
 
       await client.query("BEGIN");
       try {
+        // The pool's statement_timeout is sized for requests, not for
+        // backfills over whole tables.
+        await client.query("SET LOCAL statement_timeout = 0");
         await client.query(migration.sql);
         await client.query("INSERT INTO _migrations (name) VALUES ($1)", [
           migration.name,
@@ -533,6 +470,19 @@ export const runMigrations = async (): Promise<void> => {
     }
 
     logger.info("[migrate] up to date");
+
+    await client.query("BEGIN");
+    try {
+      await client.query("SET LOCAL statement_timeout = 0");
+      const synced = await syncSystemExerciseImages(client);
+      await client.query("COMMIT");
+      if (synced.exercises > 0 || synced.sessionExercises > 0) {
+        logger.info("[migrate] synced system exercise images", { ...synced });
+      }
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    }
   } finally {
     try {
       await client.query("SELECT pg_advisory_unlock($1)", [ADVISORY_LOCK_ID]);

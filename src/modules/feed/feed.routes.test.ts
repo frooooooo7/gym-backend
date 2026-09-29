@@ -267,6 +267,10 @@ describe("GET /feed", () => {
       expect(calls[0][1][0]).toEqual([SESSION_ID]);
     }
     expect(findCall(SQL.socialStats)?.[1]).toEqual([[SESSION_ID], USER_ID]);
+    // warm-up sets never count toward a post's totals or best sets
+    for (const marker of [SQL.postStats, SQL.topExercises]) {
+      expect(String(findCall(marker)?.[0])).toContain("set_type <> 'warmup'");
+    }
   });
 
   it("marks own posts and kudoed posts", async () => {

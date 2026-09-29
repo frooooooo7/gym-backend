@@ -224,10 +224,16 @@ components:
           nullable: true
     SessionSet:
       type: object
-      required: [setIndex, planned, actual, completed, completedAt]
+      required: [setIndex, setType, planned, actual, completed, completedAt]
       properties:
         setIndex:
           type: integer
+        setType:
+          type: string
+          enum: [normal, warmup, failure, drop]
+          description: >-
+            Rodzaj serii. Serie `warmup` są pomijane w objętości, liczbie serii
+            i najlepszej serii.
         planned:
           $ref: "#/components/schemas/PlannedSet"
         actual:
@@ -241,7 +247,7 @@ components:
           description: Moment odhaczenia serii; null dla serii nieukończonych.
     SessionExercise:
       type: object
-      required: [exerciseId, exerciseName, muscles, imageUrl, sets]
+      required: [exerciseId, exerciseName, muscles, imageUrl, note, sets]
       properties:
         exerciseId:
           type: string
@@ -257,6 +263,10 @@ components:
           type: string
           nullable: true
           description: Ścieżka względna uploadu lub absolutny URL obrazka ćwiczenia.
+        note:
+          type: string
+          nullable: true
+          description: Notatka do ćwiczenia w tej sesji (max 1000 znaków).
         sets:
           type: array
           items:

@@ -1,5 +1,5 @@
 import { requirePool } from "../../db/require-pool.js";
-import { setVolumeSql } from "../../db/sql-fragments.js";
+import { countsTowardStatsSql, setVolumeSql } from "../../db/sql-fragments.js";
 
 export interface TrainingHistoryListRow {
   id: string;
@@ -40,12 +40,14 @@ export interface TrainingHistoryExerciseRow {
   exercise_category: string;
   exercise_image_url: string | null;
   position: number;
+  note: string | null;
 }
 
 export interface TrainingHistorySetRow {
   id: string;
   session_exercise_id: string;
   set_index: number;
+  set_type: "normal" | "warmup" | "failure" | "drop";
   planned_weight_kg: string | null;
   planned_reps: string | number | null;
   planned_rir: string | number | null;
@@ -106,6 +108,7 @@ const BASE_LIST_SELECT = `
     FROM training_session_exercises tse
     JOIN training_session_sets tss ON tss.session_exercise_id = tse.id
     WHERE tse.session_id = ts.id AND tss.completed = true
+      AND ${countsTowardStatsSql("tss")}
   ) sc ON true
 `;
 
@@ -211,7 +214,8 @@ export const trainingHistoryRepository = {
         tse.exercise_muscles,
         tse.exercise_category,
         tse.exercise_image_url,
-        tse.position
+        tse.position,
+        tse.note
       FROM training_session_exercises tse
       WHERE tse.session_id = $1::uuid
       ORDER BY tse.position ASC, tse.id ASC
@@ -230,6 +234,7 @@ export const trainingHistoryRepository = {
         id,
         session_exercise_id,
         position AS set_index,
+        set_type,
         planned_weight AS planned_weight_kg,
         planned_reps,
         planned_rir,

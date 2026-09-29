@@ -1,5 +1,6 @@
 import { requirePool } from "../../db/require-pool.js";
 import {
+  countsTowardStatsSql,
   cursorTimestampSql,
   parsedRepsSql,
   parsedWeightSql,
@@ -207,6 +208,7 @@ export const feedRepository = {
          FROM training_session_exercises tse
          JOIN training_session_sets tss ON tss.session_exercise_id = tse.id
          WHERE tse.session_id = s.id AND tss.completed = true
+           AND ${countsTowardStatsSql("tss")}
        ) sc ON true
        LEFT JOIN LATERAL (
          -- distinct muscles, ordered by first appearance (exercise position,
@@ -276,6 +278,7 @@ export const feedRepository = {
            SELECT COUNT(*)::int AS completed_sets
            FROM training_session_sets tss
            WHERE tss.session_exercise_id = tse.id AND tss.completed = true
+             AND ${countsTowardStatsSql("tss")}
          ) cs ON cs.completed_sets > 0
          LEFT JOIN LATERAL (
            SELECT p.weight_kg::float8 AS weight_kg, p.reps::float8 AS reps
@@ -287,6 +290,7 @@ export const feedRepository = {
                tss.id
              FROM training_session_sets tss
              WHERE tss.session_exercise_id = tse.id AND tss.completed = true
+               AND ${countsTowardStatsSql("tss")}
            ) p
            WHERE p.weight_kg IS NOT NULL
            ORDER BY p.weight_kg DESC, p.reps DESC NULLS LAST, p.position ASC, p.id ASC

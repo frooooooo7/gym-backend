@@ -101,6 +101,7 @@ const sessionExerciseRow = {
   exercise_category: "compound",
   exercise_image_url: null,
   position: 0,
+  note: null,
 };
 
 const sessionSetRow = {
@@ -118,7 +119,23 @@ const sessionSetRow = {
   actual_tempo: "3-1-1",
   completed: true,
   completed_at: new Date("2026-05-12T10:15:00Z"),
+  set_type: "normal",
 };
+
+/** `validBody` with its only exercise / set patched. */
+const bodyWith = (
+  exercise: Record<string, unknown>,
+  set: Record<string, unknown> = {},
+) => ({
+  ...validBody,
+  exercises: [
+    {
+      ...validBody.exercises[0],
+      ...exercise,
+      sets: [{ ...validBody.exercises[0].sets[0], ...set }],
+    },
+  ],
+});
 
 const whenSqlContains = (
   patterns: Record<string, { rows?: unknown[]; rowCount?: number }>,
@@ -220,6 +237,100 @@ describe("training sessions routes", () => {
     );
     expect(insertCall?.[1]?.at(-1)).toBe(false);
     expect(res.body.sharedToProfile).toBe(false);
+  });
+
+  describe("set types and exercise notes", () => {
+    const stubInserts = (
+      exercise: Record<string, unknown> = {},
+      set: Record<string, unknown> = {},
+    ) =>
+      whenSqlContains({
+        "INSERT INTO training_sessions": {
+          rows: [{ id: SESSION_ID, inserted: true }],
+        },
+        "INSERT INTO training_session_exercises": {
+          rows: [{ id: SESSION_EXERCISE_ID }],
+        },
+        "FROM training_sessions": { rows: [sessionRow] },
+        "FROM training_session_exercises": {
+          rows: [{ ...sessionExerciseRow, ...exercise }],
+        },
+        "FROM training_session_sets": {
+          rows: [{ ...sessionSetRow, ...set }],
+        },
+      });
+
+    const insertParams = (table: "exercises" | "sets") =>
+      mockQuery.mock.calls.find((call) =>
+        String(call[0]).includes(`INSERT INTO training_session_${table}`),
+      )?.[1] as unknown[];
+
+    it("stores and returns setType and the exercise note", async () => {
+      stubInserts({ note: "Ławka o 1 dziurkę niżej" }, { set_type: "warmup" });
+
+      const res = await request(app)
+        .post("/training-sessions")
+        .set(authHeaders())
+        .send(
+          bodyWith(
+            { note: "Ławka o 1 dziurkę niżej" },
+            { setType: "warmup" },
+          ),
+        );
+
+      expect(res.status).toBe(201);
+      expect(insertParams("exercises").at(-1)).toBe("Ławka o 1 dziurkę niżej");
+      expect(insertParams("sets").at(-1)).toBe("warmup");
+      expect(res.body.exercises[0]).toMatchObject({
+        note: "Ławka o 1 dziurkę niżej",
+        sets: [{ setType: "warmup" }],
+      });
+    });
+
+    it("treats clients that send neither field as normal sets without a note", async () => {
+      stubInserts();
+
+      const res = await request(app)
+        .post("/training-sessions")
+        .set(authHeaders())
+        .send(validBody);
+
+      expect(res.status).toBe(201);
+      expect(insertParams("exercises").at(-1)).toBeNull();
+      expect(insertParams("sets").at(-1)).toBe("normal");
+      expect(res.body.exercises[0].note).toBeNull();
+      expect(res.body.exercises[0].sets[0].setType).toBe("normal");
+    });
+
+    it("trims the note and stores a blank one as null", async () => {
+      stubInserts();
+      await request(app)
+        .post("/training-sessions")
+        .set(authHeaders())
+        .send(bodyWith({ note: "  tempo 3-1-1  " }));
+      expect(insertParams("exercises").at(-1)).toBe("tempo 3-1-1");
+
+      mockQuery.mockClear();
+      stubInserts();
+      await request(app)
+        .post("/training-sessions")
+        .set(authHeaders())
+        .send(bodyWith({ note: "   " }));
+      expect(insertParams("exercises").at(-1)).toBeNull();
+    });
+
+    it.each([
+      ["an unknown setType", bodyWith({}, { setType: "superset" })],
+      ["a note over 1000 characters", bodyWith({ note: "x".repeat(1001) })],
+    ])("returns 400 for %s", async (_label, body) => {
+      const res = await request(app)
+        .post("/training-sessions")
+        .set(authHeaders())
+        .send(body);
+
+      expect(res.status).toBe(400);
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
   });
 
   it("POST /training-sessions returns 400 when startedAt is null", async () => {

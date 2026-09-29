@@ -434,6 +434,18 @@ local session and its queued operations, and **don't** fall back from `PUT` to `
   reached the server, `id` is a random uuid that never belonged to a session.
 - `PUT` / `POST` validate `finishedAt >= startedAt` (equal is fine) → `400 invalid_date_range`.
 
+## Set types and exercise notes
+
+`POST` / `PUT /training-sessions` accept, per set, `setType` (`normal` (default) | `warmup` |
+`failure` | `drop`) and, per exercise, `note` (≤ 1000 characters, trimmed, blank → `null`; longer →
+`400`). An unknown `setType` is rejected with `400`. Both fields are returned by the sessions API,
+by `GET /training-history/:id` (`exercises[].note`, `sets[].setType`) and by feed post details.
+
+**Warm-up sets are stored but never counted**: they are excluded from `completedSetsCount` and
+`totalVolumeKg` (history list and feed posts) and from a feed post's best set. `failure` and `drop`
+sets count like normal ones. Clients that predate the fields simply get `normal` sets and no note.
+Migration `017` adds `training_session_sets.set_type` and `training_session_exercises.note`.
+
 ## Social feed API (posts, kudos, comments)
 
 Module: `src/modules/feed/`. All endpoints require `Authorization: Bearer <jwt>`.

@@ -69,12 +69,14 @@ const detailExerciseRow = {
   exercise_muscles: ["chest", "triceps"],
   exercise_image_url: "/uploads/exercise-images/bench.png",
   position: 0,
+  note: "Ławka o 1 dziurkę niżej",
 };
 
 const detailSetRow = {
   id: "f4000000-0000-4000-8000-000000000001",
   session_exercise_id: detailExerciseRow.id,
   set_index: 1,
+  set_type: "failure",
   planned_weight_kg: "80",
   planned_reps: 8,
   planned_rir: 2,
@@ -137,6 +139,18 @@ describe("training history routes", () => {
       nextCursor: null,
       hasMore: false,
     });
+  });
+
+  it("GET /api/v1/training-history excludes warm-up sets from set count and volume", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [listRow] });
+
+    await request(app)
+      .get("/api/v1/training-history?limit=20")
+      .set(authHeaders());
+
+    expect(String(mockQuery.mock.calls[0][0])).toContain(
+      "tss.set_type <> 'warmup'",
+    );
   });
 
   it("GET /api/v1/training-sessions keeps the legacy history page endpoint working", async () => {
@@ -218,9 +232,11 @@ describe("training history routes", () => {
           exerciseName: "Bench Press",
           muscles: ["chest", "triceps"],
           imageUrl: "/uploads/exercise-images/bench.png",
+          note: "Ławka o 1 dziurkę niżej",
           sets: [
             {
               setIndex: 1,
+              setType: "failure",
               planned: { weightKg: 80, reps: 8, rir: 2, tempo: "3010" },
               actual: { weightKg: 82.5, reps: 8, rir: 1, tempo: "3010" },
               completed: true,

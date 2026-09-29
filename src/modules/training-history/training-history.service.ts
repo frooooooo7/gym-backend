@@ -30,6 +30,7 @@ export const groupSetsByExerciseId = (
 
 export const mapSet = (set: TrainingHistorySetRow) => ({
   setIndex: set.set_index,
+  setType: set.set_type,
   planned: {
     weightKg: toNumber(set.planned_weight_kg),
     reps: toNumber(set.planned_reps),
@@ -134,6 +135,7 @@ export const trainingHistoryService = {
         exerciseName: exercise.exercise_name,
         muscles: exercise.exercise_muscles ?? [],
         imageUrl: exercise.exercise_image_url,
+        note: exercise.note,
         sets: (setsByExerciseId.get(exercise.id) ?? []).map(mapSet),
       })),
     };

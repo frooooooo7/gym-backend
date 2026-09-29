@@ -21,6 +21,13 @@ export const parsedRepsSql = (column: string): string =>
 export const setVolumeSql = (weightColumn: string, repsColumn: string): string =>
   `COALESCE(${parsedWeightSql(weightColumn)} * ${parsedRepsSql(repsColumn)}, 0)`;
 
+/**
+ * Predicate for sets that count toward volume, set totals and best sets.
+ * Warm-up sets are logged but never inflate statistics or personal records.
+ */
+export const countsTowardStatsSql = (alias: string): string =>
+  `${alias}.set_type <> 'warmup'`;
+
 /** Session duration in whole seconds (open sessions count until now). */
 export const sessionDurationSecSql = (alias: string): string =>
   `COALESCE(

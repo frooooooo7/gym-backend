@@ -32,10 +32,12 @@ const formatSession = (row: TrainingSessionRow) => ({
     exerciseCategory: exercise.exercise_category,
     exerciseImageUrl: exercise.exercise_image_url,
     position: exercise.position,
+    note: exercise.note,
     sets: exercise.sets.map((set) => ({
       id: set.id,
       clientId: set.client_id,
       position: set.position,
+      setType: set.set_type,
       plannedWeight: set.planned_weight,
       plannedReps: set.planned_reps,
       plannedRir: set.planned_rir,

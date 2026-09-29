@@ -449,6 +449,20 @@ const MIGRATIONS: Migration[] = [
       WHERE onboarding_completed_at IS NULL;
     `,
   },
+  {
+    // Set types (warm-up / normal / failure / drop) and a per-exercise note in
+    // a session. Existing sets are 'normal'. Warm-up sets are excluded from
+    // volume, set counts and best-set aggregates (see sql-fragments.ts).
+    name: "017_session_set_type_and_exercise_note",
+    sql: `
+      ALTER TABLE training_session_sets
+        ADD COLUMN IF NOT EXISTS set_type TEXT NOT NULL DEFAULT 'normal'
+          CHECK (set_type IN ('normal', 'warmup', 'failure', 'drop'));
+
+      ALTER TABLE training_session_exercises
+        ADD COLUMN IF NOT EXISTS note TEXT;
+    `,
+  },
 ];
 
 const ADVISORY_LOCK_ID = 3_742_116_919;

@@ -80,10 +80,23 @@ const optionalText = z
 
 const nullableUuid = postgresUuid.optional().nullable();
 
+export const SET_TYPES = ["normal", "warmup", "failure", "drop"] as const;
+
+const exerciseNote = z
+  .string()
+  .max(1000)
+  .optional()
+  .nullable()
+  .transform((s) => {
+    const trimmed = s?.trim() ?? "";
+    return trimmed.length > 0 ? trimmed : null;
+  });
 
 const sessionSetSchema = z.object({
   clientId: postgresUuid.optional(),
   position: z.number().int().min(0).optional(),
+  // Older clients don't send it — such sets are plain working sets.
+  setType: z.enum(SET_TYPES).optional().default("normal"),
   plannedWeight: z.string().max(40).optional().nullable(),
   plannedReps: z.string().max(40).optional().default(""),
   plannedRir: z.string().max(40).optional().nullable(),
@@ -104,6 +117,7 @@ const sessionExerciseSchema = z.object({
   exerciseMuscles: z.array(z.string().max(80)).max(20).default([]),
   exerciseCategory: z.string().trim().min(1).max(80),
   exerciseImageUrl: z.string().max(2000).optional().nullable(),
+  note: exerciseNote,
   position: z.number().int().min(0).optional(),
   sets: z.array(sessionSetSchema).min(1, "missing_sets").max(50),
 });

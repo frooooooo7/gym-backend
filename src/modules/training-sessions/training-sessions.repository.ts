@@ -25,6 +25,7 @@ export interface TrainingSessionSetRow {
   actual_tempo: string | null;
   completed: boolean;
   completed_at: Date | null;
+  set_type: "normal" | "warmup" | "failure" | "drop";
 }
 
 export interface TrainingSessionExerciseRow {
@@ -38,6 +39,7 @@ export interface TrainingSessionExerciseRow {
   exercise_category: string;
   exercise_image_url: string | null;
   position: number;
+  note: string | null;
   sets: TrainingSessionSetRow[];
 }
 
@@ -82,9 +84,9 @@ const replaceChildren = async (
   const exerciseValueClauses: string[] = [];
   const exerciseParams: unknown[] = [];
   for (const [exerciseIndex, exercise] of exercises.entries()) {
-    const offset = exerciseIndex * 10;
+    const offset = exerciseIndex * 11;
     exerciseValueClauses.push(
-      `($${offset + 1}::uuid, $${offset + 2}::uuid, $${offset + 3}, $${offset + 4}::uuid, $${offset + 5}::uuid, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10})`,
+      `($${offset + 1}::uuid, $${offset + 2}::uuid, $${offset + 3}, $${offset + 4}::uuid, $${offset + 5}::uuid, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11})`,
     );
     exerciseParams.push(
       exerciseIds[exerciseIndex],
@@ -97,12 +99,13 @@ const replaceChildren = async (
       exercise.exerciseCategory,
       trimOrNull(exercise.exerciseImageUrl),
       exercise.position ?? exerciseIndex,
+      exercise.note ?? null,
     );
   }
   await client.query(
     `INSERT INTO training_session_exercises
       (id, client_id, session_id, exercise_id, exercise_client_id, exercise_name,
-       exercise_muscles, exercise_category, exercise_image_url, position)
+       exercise_muscles, exercise_category, exercise_image_url, position, note)
      VALUES ${exerciseValueClauses.join(", ")}`,
     exerciseParams,
   );
@@ -116,9 +119,9 @@ const replaceChildren = async (
       (a, b) => (a.position ?? 0) - (b.position ?? 0),
     );
     for (const [setIndex, set] of sets.entries()) {
-      const offset = setOrdinal * 13;
+      const offset = setOrdinal * 14;
       setValueClauses.push(
-        `($${offset + 1}::uuid, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13})`,
+        `($${offset + 1}::uuid, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14})`,
       );
       setParams.push(
         set.clientId ?? null,
@@ -134,6 +137,7 @@ const replaceChildren = async (
         trimOrNull(set.actualTempo),
         set.completed,
         set.completedAt ?? null,
+        set.setType,
       );
       setOrdinal += 1;
     }
@@ -144,7 +148,7 @@ const replaceChildren = async (
     `INSERT INTO training_session_sets
       (client_id, session_exercise_id, position, planned_weight, planned_reps,
        planned_rir, planned_tempo, actual_weight, actual_reps, actual_rir,
-       actual_tempo, completed, completed_at)
+       actual_tempo, completed, completed_at, set_type)
      VALUES ${setValueClauses.join(", ")}`,
     setParams,
   );
@@ -303,7 +307,7 @@ const loadSessions = async (
   const { rows: exerciseRows } = await client.query(
     `SELECT id, client_id, session_id, exercise_id, exercise_client_id,
             exercise_name, exercise_muscles, exercise_category,
-            exercise_image_url, position
+            exercise_image_url, position, note
      FROM training_session_exercises
      WHERE session_id = ANY($1::uuid[])
      ORDER BY position, id`,
@@ -324,7 +328,8 @@ const loadSessions = async (
   const { rows: setRows } = await client.query(
     `SELECT id, client_id, session_exercise_id, position, planned_weight,
             planned_reps, planned_rir, planned_tempo, actual_weight,
-            actual_reps, actual_rir, actual_tempo, completed, completed_at
+            actual_reps, actual_rir, actual_tempo, completed, completed_at,
+            set_type
      FROM training_session_sets
      WHERE session_exercise_id = ANY($1::uuid[])
      ORDER BY position, id`,

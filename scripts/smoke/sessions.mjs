@@ -237,6 +237,47 @@ check("page 2 deleted[] empty", r.status === 200 && r.json.items.length === 1 &&
 r = await req("GET", `/training-sessions/history?updatedSince=${encodeURIComponent(syncStart)}`, { token: a.token });
 check("deleted[] is per user", r.status === 200 && r.json.deleted.length === 0, r.json?.deleted);
 
+// ---- set types + exercise note: round trip, warm-ups excluded from aggregates ----
+// The warm-up is deliberately the heaviest set, so counting it would change
+// the best set (120 instead of 100), the set count (4 instead of 3) and the
+// volume (1500 instead of 1380).
+const typedSet = (position, setType, w, reps) => ({ position, setType, plannedWeight: w, plannedReps: reps, actualWeight: w, actualReps: reps, completed: true });
+const TYPED = await create(b, "B typed sets", {
+  startedAt: hoursAgo(1.5),
+  share: true,
+  exercises: [{
+    exerciseName: "Wyciskanie",
+    exerciseMuscles: ["chest"],
+    exerciseCategory: "compound",
+    note: "  Ławka o 1 dziurkę niżej  ",
+    sets: [typedSet(0, "warmup", "120", "1"), typedSet(1, "normal", "100", "5"), typedSet(2, "failure", "100", "4"), typedSet(3, "drop", "80", "6")],
+  }],
+});
+check("typed session: response keeps setType per set", TYPED.json?.exercises?.[0]?.sets?.map((s) => s.setType).join() === "warmup,normal,failure,drop", TYPED.json?.exercises?.[0]?.sets);
+check("typed session: note is trimmed", TYPED.json?.exercises?.[0]?.note === "Ławka o 1 dziurkę niżej", TYPED.json?.exercises?.[0]?.note);
+check("typed session: stored in DB", await sql(`SELECT string_agg(set_type, ',' ORDER BY position) FROM training_session_sets WHERE session_exercise_id IN (SELECT id FROM training_session_exercises WHERE session_id='${TYPED.id}')`) === "warmup,normal,failure,drop");
+
+r = await req("GET", `/api/v1/training-history/${TYPED.id}`, { token: b.token });
+check("history detail exposes setType and exercise note", r.status === 200 && r.json.exercises[0].note === "Ławka o 1 dziurkę niżej" && r.json.exercises[0].sets.map((s) => s.setType).join() === "warmup,normal,failure,drop", r.json?.exercises?.[0]);
+
+r = await req("GET", `/api/v1/training-history?limit=50`, { token: b.token });
+const typedListItem = r.json?.items?.find((x) => x.id === TYPED.id);
+check("history list: warm-up excluded from completedSetsCount", typedListItem?.completedSetsCount === 3, typedListItem);
+check("history list: warm-up excluded from totalVolumeKg", typedListItem?.totalVolumeKg === 1380, typedListItem);
+
+r = await req("GET", "/feed", { token: a.token });
+const typedPost = r.json?.items?.find((x) => x.id === TYPED.id);
+check("feed post: warm-up excluded from totals", typedPost?.completedSetsCount === 3 && typedPost?.totalVolumeKg === 1380, typedPost);
+check("feed post: best set ignores the heavier warm-up", typedPost?.topExercises?.[0]?.bestSet?.weightKg === 100 && typedPost?.topExercises?.[0]?.bestSet?.reps === 5 && typedPost?.topExercises?.[0]?.completedSets === 3, typedPost?.topExercises);
+
+// A client that predates the fields (no setType / note) gets plain working sets.
+r = await req("GET", `/training-sessions/history`, { token: b.token });
+const legacyItem = r.json?.items?.find((x) => x.id === KEEP1.id);
+check("legacy session (no setType/note sent) reads back as normal sets", legacyItem && legacyItem.exercises.every((e) => e.note === null && e.sets.every((s) => s.setType === "normal")), legacyItem?.exercises);
+
+r = await req("POST", "/training-sessions", { token: b.token, body: sessionBody("bad type", { exercises: [{ ...ex("X", [["10", "10"]]), sets: [{ ...ex("X", [["10", "10"]]).sets[0], setType: "superset" }] }] }) });
+check("unknown setType is rejected with 400", r.status === 400, r);
+
 // ---- race: concurrent create vs delete-by-client-id ----
 const raceIds = Array.from({ length: 15 }, () => randomUUID());
 const results = await Promise.all(raceIds.map(async (cid, i) => {

@@ -485,6 +485,9 @@ else (missing, cancelled/active, someone else's non-shared session) → `404 pos
     { "name": "Wyciskanie sztangi na ławce", "completedSets": 4, "bestSet": { "weightKg": 82.5, "reps": 8 } },
     { "name": "Podciąganie na drążku", "completedSets": 3, "bestSet": null }
   ],
+  "personalRecords": [
+    { "exerciseName": "Wyciskanie sztangi na ławce", "kinds": ["weight", "oneRepMax"], "weightKg": 82.5, "reps": 8, "oneRepMaxKg": 104.5, "improvement": 2.5 }
+  ],
   "kudosCount": 3,
   "commentCount": 1,
   "hasKudoed": false,
@@ -497,6 +500,13 @@ else (missing, cancelled/active, someone else's non-shared session) → `404 pos
 - `topExercises` — first 3 exercises (by position) with ≥1 completed set. `bestSet` = completed
   set with the highest parsable actual weight (tie → more reps); `null` when no weight parses;
   `reps` may be `null`. Weights accept `82.5` and `82,5`; reps must be an integer.
+- `personalRecords` — the author's personal records set in this workout (the app shows them as
+  „Nowy rekord!”), in exercise order. Compared with all of the author's earlier completed sessions
+  (by `startedAt`), per exercise name (trimmed, case-insensitive); warm-up sets don't count and the
+  first time an exercise is logged only sets the baseline. `kinds` ⊆ `weight` (heaviest set),
+  `oneRepMax` (Epley estimate, > 0.05 kg better) and `reps` (most reps without weight); the first
+  kind is the primary one: `weightKg`/`reps` describe its set and `improvement` is the gain over
+  the previous best of that kind (`null` when there was none, e.g. first weighted set).
 - `recentKudos` — up to 3 most recent kudo givers.
 
 `Comment`:

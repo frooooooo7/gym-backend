@@ -1,8 +1,8 @@
 // Smoke test: account & security — token_version, change-password, logout-all, account deletion, limiters,
-// onboarding profile details (real server + Postgres).
+// onboarding profile details, body weight log (real server + Postgres).
 // Standalone: BASE=http://localhost:3101 DATABASE_URL=... [API_PREFIX=/api/v1] [SMOKE_BACKEND_DIR=<server cwd>] node scripts/smoke/account.mjs
 // Needs a fresh server (in-memory rate limiters) — see run-all.mjs.
-import { apiPath, BACKEND_DIR, BASE, closeDb, sql } from "./lib.mjs";
+import { API_PREFIX, apiPath, BACKEND_DIR, BASE, closeDb, sql } from "./lib.mjs";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -109,6 +109,33 @@ r = await req("POST", "/profile/me/onboarding/complete", { token: c.token });
 check("complete onboarding is idempotent", r.status === 200 && await sql(`SELECT onboarding_completed_at FROM users WHERE id='${c.id}'`) === completedAt, r);
 r = await req("GET", "/auth/me", { token: c.token });
 check("/auth/me reflects onboardingCompleted", r.status === 200 && r.json.onboardingCompleted === true, r);
+
+// ================= body weight log (/api/v1 only) =================
+if (API_PREFIX) {
+  const profileWeight = async () => (await req("GET", "/profile/me", { token: c.token })).json.details.weightKg;
+  r = await req("PUT", "/body-weight/2026-09-01", { token: c.token, body: { weightKg: 82.44 } });
+  check("body weight: PUT creates entry (rounded)", r.status === 200 && r.json.date === "2026-09-01" && r.json.weightKg === 82.4, r);
+  check("body weight: latest entry sets profile weight", await profileWeight() === 82.4);
+  r = await req("PUT", "/body-weight/2026-09-08", { token: c.token, body: { weightKg: 81.5 } });
+  r = await req("PUT", "/body-weight/2026-09-01", { token: c.token, body: { weightKg: 83 } });
+  check("body weight: PUT same day replaces it", r.status === 200 && r.json.weightKg === 83, r);
+  check("body weight: older entry leaves profile weight", await profileWeight() === 81.5);
+  r = await req("GET", "/body-weight", { token: c.token });
+  check("body weight: list oldest first", r.status === 200 && JSON.stringify(r.json.items.map((i) => [i.date, i.weightKg])) === JSON.stringify([["2026-09-01", 83], ["2026-09-08", 81.5]]), r);
+  r = await req("GET", "/body-weight?from=2026-09-02", { token: c.token });
+  check("body weight: list within range", r.status === 200 && r.json.items.length === 1 && r.json.items[0].date === "2026-09-08", r);
+  r = await req("GET", "/body-weight", { token: a.token });
+  check("body weight: entries are private", r.status === 200 && r.json.items.length === 0, r);
+  r = await req("DELETE", "/body-weight/2026-09-08", { token: c.token });
+  check("body weight: DELETE latest → 204", r.status === 204, r);
+  check("body weight: profile weight falls back to previous entry", await profileWeight() === 83);
+  r = await req("DELETE", "/body-weight/2026-09-08", { token: c.token });
+  check("body weight: DELETE is idempotent", r.status === 204, r);
+  r = await req("DELETE", "/body-weight/2026-09-01", { token: c.token });
+  check("body weight: deleting the only entry keeps profile weight", r.status === 204 && await profileWeight() === 83, r);
+  r = await req("PUT", "/body-weight/2026-02-30", { token: c.token, body: { weightKg: 80 } });
+  check("body weight: invalid date → 400", r.status === 400 && r.json.error === "invalid_date", r);
+}
 
 // ================= token_version / change-password =================
 r = await login(a.email, PASSWORD);

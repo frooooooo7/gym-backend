@@ -463,6 +463,33 @@ const MIGRATIONS: Migration[] = [
         ADD COLUMN IF NOT EXISTS note TEXT;
     `,
   },
+  {
+    // Body weight log: at most one entry per user and calendar day (the
+    // client's local date). users.weight_kg mirrors the latest entry. Users
+    // who already gave a weight get it as their first entry, dated when they
+    // finished onboarding (the closest date we have).
+    name: "018_body_weight_entries",
+    sql: `
+      CREATE TABLE IF NOT EXISTS body_weight_entries (
+        user_id     UUID         NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        measured_on DATE         NOT NULL,
+        weight_kg   NUMERIC(4,1) NOT NULL CHECK (weight_kg BETWEEN 30 AND 300),
+        created_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
+        updated_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
+        PRIMARY KEY (user_id, measured_on)
+      );
+
+      CREATE OR REPLACE TRIGGER body_weight_entries_set_updated_at
+        BEFORE UPDATE ON body_weight_entries
+        FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+      INSERT INTO body_weight_entries (user_id, measured_on, weight_kg)
+      SELECT id, COALESCE(onboarding_completed_at, created_at)::date, weight_kg
+      FROM users
+      WHERE weight_kg IS NOT NULL
+      ON CONFLICT DO NOTHING;
+    `,
+  },
 ];
 
 const ADVISORY_LOCK_ID = 3_742_116_919;

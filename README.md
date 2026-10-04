@@ -181,6 +181,9 @@ Auth column: 🔒 = `Authorization: Bearer <jwt>` required.
 | GET | `/posts/:sessionId/comments` | 🔒 | Comments, oldest first (`limit`, `cursor`). |
 | POST | `/posts/:sessionId/comments` | 🔒 | Add comment. 30/min per user. |
 | DELETE | `/posts/:sessionId/comments/:commentId` | 🔒 | Delete own comment / comment on own post. |
+| GET | `/body-weight` | 🔒 | **v1 only**: own weight log, oldest first (`from`, `to`). See [Body weight log](#body-weight-log). |
+| PUT | `/body-weight/:date` | 🔒 | **v1 only**: record the weight for a day (upsert) → entry. |
+| DELETE | `/body-weight/:date` | 🔒 | **v1 only**: delete a day's entry (idempotent) → 204. |
 
 Static files (no prefix, no auth, long-lived cache): `GET /uploads/exercise-images/<file>`,
 `GET /uploads/avatars/<file>`. Upload URLs returned by the API are relative (`/uploads/...`).
@@ -645,3 +648,29 @@ include them. Each value can be `null` (not given).
 
 A body without any known field returns `400 no_fields_to_update`. The details live on the `users` row,
 so account deletion removes them too.
+
+## Body weight log
+
+Private weight history, at most one entry per calendar day. `:date` is the **client's local date**
+(`YYYY-MM-DD`, a real day from 1900-01-01 up to tomorrow in UTC), so a day is the key and offline
+clients can replay writes safely: `PUT` is an upsert, `DELETE` is idempotent.
+
+```json
+GET /api/v1/body-weight?from=2026-09-01&to=2026-09-30
+{ "items": [ { "date": "2026-09-01", "weightKg": 82.4, "updatedAt": "2026-09-01T07:30:00.000Z" } ] }
+
+PUT /api/v1/body-weight/2026-09-15   { "weightKg": 81.46 }
+{ "date": "2026-09-15", "weightKg": 81.5, "updatedAt": "..." }
+```
+
+| Field | Rule | Error |
+|---|---|---|
+| `:date` | `YYYY-MM-DD`, real day, 1900-01-01 … tomorrow (UTC) | `400 invalid_date` |
+| `weightKg` | number 30–300, rounded to 0.1 | `400 invalid_weight` |
+| `from`, `to` | optional `YYYY-MM-DD`, `from <= to` | `400 invalid_date_range` |
+
+The profile's `details.weightKg` follows the log: writing the latest entry sets it, and deleting the
+latest entry moves it back to the previous one (deleting the only entry leaves it unchanged).
+`PATCH /profile/me` does not write the log; the app records an entry itself when the weight changes
+there. Migration `018_body_weight_entries` seeds each user's existing weight as their first entry,
+dated when they finished onboarding. Entries are deleted with the account.

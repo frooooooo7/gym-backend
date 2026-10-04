@@ -2,7 +2,10 @@ import type { Request, Response } from "express";
 import { asyncHandler } from "../../common/async-handler.js";
 import type { AuthRequest } from "../../middleware/auth.js";
 import { AVATARS_PUBLIC_PREFIX } from "./profile.avatar-upload.js";
-import type { ProfileUpdateInput } from "./profile.schemas.js";
+import type {
+  HandleAvailabilityQuery,
+  ProfileUpdateInput,
+} from "./profile.schemas.js";
 import { profileService } from "./profile.service.js";
 
 export const profileController = {
@@ -17,6 +20,13 @@ export const profileController = {
     const body = req.body as ProfileUpdateInput;
     const profile = await profileService.updateProfile(userId, body);
     res.status(200).json(profile);
+  }),
+
+  checkHandleAvailability: asyncHandler(async (req: Request, res: Response) => {
+    const userId = (req as AuthRequest).auth.sub;
+    const { handle } = req.query as unknown as HandleAvailabilityQuery;
+    const result = await profileService.checkHandleAvailability(userId, handle);
+    res.status(200).json(result);
   }),
 
   completeOnboarding: asyncHandler(async (req: Request, res: Response) => {

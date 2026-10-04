@@ -102,6 +102,16 @@ export const profileRepository = {
     return rows[0] as ProfileUserRow | undefined;
   },
 
+  /** Whether [handle] belongs to someone other than [userId]. */
+  isHandleTakenByOther: async (handle: string, userId: string): Promise<boolean> => {
+    const pool = requirePool();
+    const { rows } = await pool.query(
+      `SELECT EXISTS (SELECT 1 FROM users WHERE handle = $1 AND id <> $2) AS taken`,
+      [handle, userId],
+    );
+    return rows[0]?.taken === true;
+  },
+
   findOwnProfileById: async (userId: string): Promise<OwnProfileRow | undefined> => {
     const pool = requirePool();
     const { rows } = await pool.query(

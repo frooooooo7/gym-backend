@@ -105,6 +105,11 @@ export const userSearchQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(20),
 });
 
+/** Raw `handle` is normalized like PATCH /profile/me; format is judged by the service. */
+export const handleAvailabilityQuerySchema = z.object({
+  handle: z.string({ error: "invalid_handle" }).trim().toLowerCase().max(100, "invalid_handle"),
+});
+
 export const userIdParamsSchema = z.object({
   userId: postgresUuid,
 });
@@ -114,4 +119,5 @@ export type TrainingGoal = (typeof TRAINING_GOALS)[number];
 export type ExperienceLevel = (typeof EXPERIENCE_LEVELS)[number];
 export type ProfileUpdateInput = z.infer<typeof profileUpdateSchema>;
 export type ProfileListQuery = z.infer<typeof profileListQuerySchema>;
+export type HandleAvailabilityQuery = z.infer<typeof handleAvailabilityQuerySchema>;
 export type UserSearchQuery = z.infer<typeof userSearchQuerySchema>;

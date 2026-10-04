@@ -96,6 +96,12 @@ check(
 );
 r = await req("PATCH", "/profile/me", { token: b.token, body: { handle: cHandle } });
 check("duplicate handle → 409 handle_taken", r.status === 409 && r.json.error === "handle_taken", r);
+r = await req("GET", `/profile/handle-availability?handle=${cHandle.toUpperCase()}`, { token: b.token });
+check("handle availability: taken by someone else", r.status === 200 && r.json.handle === cHandle && r.json.available === false && r.json.reason === "handle_taken", r);
+r = await req("GET", `/profile/handle-availability?handle=${cHandle}`, { token: c.token });
+check("handle availability: own handle counts as free", r.status === 200 && r.json.available === true && r.json.reason === null, r);
+r = await req("GET", `/profile/handle-availability?handle=free_${stamp}`, { token: b.token });
+check("handle availability: unused handle is free", r.status === 200 && r.json.available === true, r);
 r = await req("PATCH", "/profile/me", { token: c.token, body: { birthDate: new Date().toISOString().slice(0, 10) } });
 check("too young → 400 invalid_birth_date", r.status === 400 && r.json.error === "invalid_birth_date", r);
 r = await req("GET", `/users/${c.id}/profile`, { token: b.token });

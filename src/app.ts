@@ -22,6 +22,7 @@ import {
   requestContext,
 } from "./middleware/request-context.js";
 import { authRouter } from "./modules/auth/auth.routes.js";
+import { bodyWeightRouter } from "./modules/body-weight/body-weight.routes.js";
 import { exercisesRouter } from "./modules/exercises/exercises.routes.js";
 import { ensureExerciseImagesDir } from "./modules/exercises/exercises.image-upload.js";
 import { SYSTEM_EXERCISE_IMAGES_URL_PREFIX } from "./modules/exercises/system-exercise-images.js";
@@ -64,6 +65,7 @@ const createApiV1Router = (): Router => {
   v1.use(trainingSessionsRouter);
   v1.use(trainingHistoryRouter);
   v1.use(profileRouter);
+  v1.use(bodyWeightRouter);
   v1.use(feedRouter);
   // Unknown /api/v1/* must not fall through to the legacy mounts below.
   v1.use(notFound);

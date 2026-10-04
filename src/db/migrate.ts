@@ -463,6 +463,28 @@ const MIGRATIONS: Migration[] = [
         ADD COLUMN IF NOT EXISTS note TEXT;
     `,
   },
+  {
+    // Body weight log, one entry per calendar day in the client's timezone.
+    // users.weight_kg stays the "current weight" and follows the newest
+    // entry. Existing profile weights become each account's first entry.
+    name: "018_body_weight_entries",
+    sql: `
+      CREATE TABLE IF NOT EXISTS body_weight_entries (
+        user_id     UUID         NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        measured_on DATE         NOT NULL,
+        weight_kg   NUMERIC(4,1) NOT NULL CHECK (weight_kg BETWEEN 30 AND 300),
+        created_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
+        updated_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
+        PRIMARY KEY (user_id, measured_on)
+      );
+
+      INSERT INTO body_weight_entries (user_id, measured_on, weight_kg)
+      SELECT id, COALESCE(onboarding_completed_at, created_at)::date, weight_kg
+      FROM users
+      WHERE weight_kg IS NOT NULL
+      ON CONFLICT DO NOTHING;
+    `,
+  },
 ];
 
 const ADVISORY_LOCK_ID = 3_742_116_919;

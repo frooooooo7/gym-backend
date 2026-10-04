@@ -485,6 +485,31 @@ const MIGRATIONS: Migration[] = [
       ON CONFLICT DO NOTHING;
     `,
   },
+  {
+    // Body measurements log (circumferences in cm, body fat %), one entry
+    // per calendar day in the client's timezone. Every value is optional,
+    // but an entry carries at least one.
+    name: "019_body_measurement_entries",
+    sql: `
+      CREATE TABLE IF NOT EXISTS body_measurement_entries (
+        user_id      UUID         NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        measured_on  DATE         NOT NULL,
+        waist_cm     NUMERIC(4,1) CHECK (waist_cm BETWEEN 10 AND 300),
+        chest_cm     NUMERIC(4,1) CHECK (chest_cm BETWEEN 10 AND 300),
+        hips_cm      NUMERIC(4,1) CHECK (hips_cm BETWEEN 10 AND 300),
+        neck_cm      NUMERIC(4,1) CHECK (neck_cm BETWEEN 10 AND 300),
+        arm_cm       NUMERIC(4,1) CHECK (arm_cm BETWEEN 10 AND 300),
+        thigh_cm     NUMERIC(4,1) CHECK (thigh_cm BETWEEN 10 AND 300),
+        calf_cm      NUMERIC(4,1) CHECK (calf_cm BETWEEN 10 AND 300),
+        body_fat_pct NUMERIC(3,1) CHECK (body_fat_pct BETWEEN 2 AND 75),
+        created_at   TIMESTAMPTZ  NOT NULL DEFAULT now(),
+        updated_at   TIMESTAMPTZ  NOT NULL DEFAULT now(),
+        PRIMARY KEY (user_id, measured_on),
+        CHECK (num_nonnulls(waist_cm, chest_cm, hips_cm, neck_cm, arm_cm,
+                            thigh_cm, calf_cm, body_fat_pct) > 0)
+      );
+    `,
+  },
 ];
 
 const ADVISORY_LOCK_ID = 3_742_116_919;

@@ -165,6 +165,7 @@ Auth column: 🔒 = `Authorization: Bearer <jwt>` required.
 | POST | `/profile/me/avatar` | 🔒 | Multipart field `avatar` (≤ 5 MB) → `avatarUrl`. |
 | DELETE | `/profile/me/avatar` | 🔒 | Remove avatar. |
 | GET / PUT / DELETE | `/profile/me/body-weight[/:date]` | 🔒 | Body weight log (see [Body weight log](#body-weight-log)). |
+| GET / PUT / DELETE | `/profile/me/body-measurements[/:date]` | 🔒 | Body measurements log (see [Body measurements log](#body-measurements-log)). |
 | GET | `/profile/following` | 🔒 | Who I follow (`limit`, `offset`). |
 | GET | `/profile/followers` | 🔒 | My followers (`limit`, `offset`). |
 | GET | `/users/search` | 🔒 | Search users (`q`, `limit`). |
@@ -669,3 +670,23 @@ from server time.
   adding an entry.
 - Migration `018_body_weight_entries` turns each existing profile weight into a first entry dated the
   day the account finished onboarding. Entries are removed with the account.
+
+## Body measurements log
+
+A private history of body measurements next to the body weight log, one entry per calendar day
+(`/api/v1` only). Dates follow the [body weight log](#body-weight-log) rules.
+
+| Method & path | Body / query | Response |
+|---|---|---|
+| `GET /profile/me/body-measurements` | `?limit=1..1000` (default 365) | `200 { "entries": [Entry] }`, the newest `limit` entries, oldest first |
+| `PUT /profile/me/body-measurements/:date` | `{ "waistCm": 84.5, "bodyFatPct": 15.2, … }` | `200 Entry`, creates or replaces that day's entry |
+| `DELETE /profile/me/body-measurements/:date` | | `204`, or `404 entry_not_found` |
+
+`Entry` is `{ "date", "waistCm", "chestCm", "hipsCm", "neckCm", "armCm", "thighCm", "calfCm",
+"bodyFatPct" }`, each value a number or `null`.
+
+- A PUT replaces the whole entry: fields left out or `null` are cleared. At least one value is required
+  (`400 no_measurements`).
+- Circumferences (`…Cm`) are numbers 10–300, body fat is 2–75 %, each rounded to 0.1
+  (`400 invalid_measurement`).
+- Migration `019_body_measurement_entries` adds the table. Entries are removed with the account.

@@ -318,6 +318,36 @@ check("unshared post 404 for others", r.status === 404 && r.json.error === "post
 r = await req("GET", `/posts/${S2}`, { token: b.token });
 check("unshared post visible to owner", r.status === 200 && r.json.isOwn === true, r);
 
+// ---- personal records ("Nowy rekord!") ----
+const f = await register("Filip", "Rekordowy");
+const prSet = (w, r, setType = "normal") => ({ position: 0, setType, plannedWeight: w, plannedReps: r, actualWeight: w, actualReps: r, completed: true });
+const prEx = (name, position, sets) => ({ exerciseId: null, exerciseName: name, exerciseMuscles: ["chest"], exerciseCategory: "compound", position, sets: sets.map((st, i) => ({ ...st, position: i })) });
+// Baseline: bench 80×5, push-ups 30, squat 100×5.
+await createSession(f, "F base", { startedAt: hoursAgo(72), exercises: [
+  prEx("Wyciskanie sztangi na ławce", 0, [prSet("80", "5")]),
+  prEx("Pompki", 1, [prSet("", "30")]),
+  prEx("Przysiad", 2, [prSet("100", "5")]),
+] });
+// Cancelled sessions and warm-ups never set the bar.
+await createSession(f, "F cancelled", { startedAt: hoursAgo(48), status: "cancelled", exercises: [prEx("Wyciskanie sztangi na ławce", 0, [prSet("200", "1")])] });
+const F2 = await createSession(f, "F records", { startedAt: hoursAgo(24), share: true, exercises: [
+  prEx(" wyciskanie SZTANGI na ławce ", 0, [prSet("120", "1", "warmup"), prSet("85", "5"), prSet("80", "8")]),
+  prEx("Pompki", 1, [prSet("", "34")]),
+  prEx("Przysiad", 2, [prSet("100", "5")]),
+  prEx("Martwy ciąg", 3, [prSet("140", "3")]),
+] });
+const F3 = await createSession(f, "F after", { startedAt: hoursAgo(1), share: true, exercises: [prEx("Wyciskanie sztangi na ławce", 0, [prSet("85", "5")])] });
+r = await req("GET", "/feed?limit=50", { token: f.token });
+const prPost = r.json?.items?.find((p) => p.id === F2);
+check("records: heavier set, 1RM and bodyweight reps; no baseline/equal/warm-up/cancelled", prPost && JSON.stringify(prPost.personalRecords) === JSON.stringify([
+  // 85×5 beats 80×5; the best 1RM is 80×8 (101,33) vs 93,33 before.
+  { exerciseName: "wyciskanie SZTANGI na ławce", kinds: ["weight", "oneRepMax"], weightKg: 85, reps: 5, oneRepMaxKg: 101.33, improvement: 5 },
+  { exerciseName: "Pompki", kinds: ["reps"], weightKg: null, reps: 34, oneRepMaxKg: null, improvement: 4 },
+]), prPost?.personalRecords);
+check("records: only earlier sessions count", r.json?.items?.find((p) => p.id === F3)?.personalRecords?.length === 0, r.json?.items?.find((p) => p.id === F3)?.personalRecords);
+r = await req("GET", `/posts/${F2}`, { token: f.token });
+check("records on post details", r.status === 200 && r.json.personalRecords?.length === 2, r.json?.personalRecords);
+
 // ---- comment rate limit (30/min per user) ----
 const e = await register("Ewa", "Limitowa");
 let okCount = 0;

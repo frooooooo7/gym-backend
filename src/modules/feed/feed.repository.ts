@@ -57,6 +57,26 @@ export interface TopExerciseRow {
   best_reps: number | null;
 }
 
+/**
+ * One exercise of a post: its best values in that session next to the best
+ * values of the author's earlier completed sessions (same exercise key).
+ * `has_previous` is false the first time the exercise is logged.
+ */
+export interface ExerciseBestsRow {
+  session_id: string;
+  exercise_name: string;
+  best_weight_kg: number | null;
+  best_weight_reps: number | null;
+  best_one_rep_max_kg: number | null;
+  best_one_rep_max_weight_kg: number | null;
+  best_one_rep_max_reps: number | null;
+  best_bodyweight_reps: number | null;
+  has_previous: boolean;
+  prev_weight_kg: number | null;
+  prev_one_rep_max_kg: number | null;
+  prev_bodyweight_reps: number | null;
+}
+
 export interface RecentKudoRow extends UserMiniRow {
   session_id: string;
 }
@@ -96,6 +116,41 @@ const POST_SELECT = `
     u.avatar_url AS author_avatar_url
   FROM training_sessions ts
   JOIN users u ON u.id = ts.user_id
+`;
+
+/**
+ * Completed, stat-counting sets with parsed numbers and an exercise key —
+ * the same key the app uses for records: the trimmed, lower-cased name (the
+ * exercise id differs between devices and the server), or the id when the
+ * name is blank. `one_rep_max_kg` is the Epley estimate.
+ */
+const scoredSetsSql = (sessionFilter: string): string => `
+  SELECT
+    tse.session_id,
+    tse.position,
+    tse.id AS exercise_row_id,
+    tss.position AS set_position,
+    btrim(tse.exercise_name) AS exercise_name,
+    CASE WHEN btrim(tse.exercise_name) <> ''
+         THEN 'name:' || lower(btrim(tse.exercise_name))
+         ELSE 'id:' || COALESCE(tse.exercise_id::text, '')
+    END AS exercise_key,
+    p.weight_kg,
+    p.reps,
+    CASE WHEN p.weight_kg > 0 AND p.reps > 0
+         THEN CASE WHEN p.reps = 1 THEN p.weight_kg
+                   ELSE p.weight_kg * (1 + p.reps / 30.0) END
+    END AS one_rep_max_kg
+  FROM training_session_exercises tse
+  JOIN training_session_sets tss ON tss.session_exercise_id = tse.id
+  CROSS JOIN LATERAL (
+    SELECT
+      ${parsedWeightSql("tss.actual_weight")}::float8 AS weight_kg,
+      ${parsedRepsSql("tss.actual_reps")}::float8 AS reps
+  ) p
+  WHERE ${sessionFilter}
+    AND tss.completed = true
+    AND ${countsTowardStatsSql("tss")}
 `;
 
 const COMMENT_COLUMNS = `
@@ -303,6 +358,82 @@ export const feedRepository = {
       [sessionIds, perSession],
     );
     return rows as TopExerciseRow[];
+  },
+
+  /**
+   * Per post and exercise: the session's best weight / estimated 1RM /
+   * bodyweight reps and the author's best values from completed sessions
+   * started before it. The service decides which of them are new records.
+   */
+  findExerciseBests: async (sessionIds: string[]): Promise<ExerciseBestsRow[]> => {
+    if (sessionIds.length === 0) return [];
+    const pool = requirePool();
+    const { rows } = await pool.query(
+      `WITH cur AS (
+         ${scoredSetsSql("tse.session_id = ANY($1::uuid[])")}
+       ),
+       tops AS (
+         SELECT
+           cur.session_id,
+           cur.exercise_key,
+           (array_agg(cur.exercise_name ORDER BY cur.position, cur.exercise_row_id))[1] AS exercise_name,
+           MIN(cur.position) AS position,
+           MAX(cur.weight_kg) FILTER (WHERE cur.weight_kg > 0) AS best_weight_kg,
+           (array_agg(cur.reps ORDER BY cur.weight_kg DESC, cur.reps DESC NULLS LAST, cur.position, cur.set_position)
+              FILTER (WHERE cur.weight_kg > 0))[1] AS best_weight_reps,
+           MAX(cur.one_rep_max_kg) AS best_one_rep_max_kg,
+           (array_agg(cur.weight_kg ORDER BY cur.one_rep_max_kg DESC, cur.position, cur.set_position)
+              FILTER (WHERE cur.one_rep_max_kg IS NOT NULL))[1] AS best_one_rep_max_weight_kg,
+           (array_agg(cur.reps ORDER BY cur.one_rep_max_kg DESC, cur.position, cur.set_position)
+              FILTER (WHERE cur.one_rep_max_kg IS NOT NULL))[1] AS best_one_rep_max_reps,
+           MAX(cur.reps) FILTER (WHERE COALESCE(cur.weight_kg, 0) <= 0) AS best_bodyweight_reps
+         FROM cur
+         GROUP BY cur.session_id, cur.exercise_key
+       ),
+       -- one pass over each author's earlier history per post (not per
+       -- exercise), limited to the exercises that post contains
+       prev AS (
+         SELECT
+           post.id AS session_id,
+           e.exercise_key,
+           MAX(e.weight_kg) FILTER (WHERE e.weight_kg > 0) AS weight_kg,
+           MAX(e.one_rep_max_kg) AS one_rep_max_kg,
+           MAX(e.reps) FILTER (WHERE COALESCE(e.weight_kg, 0) <= 0) AS bodyweight_reps
+         FROM training_sessions post
+         CROSS JOIN LATERAL (
+           ${scoredSetsSql(`tse.session_id IN (
+             SELECT earlier.id FROM training_sessions earlier
+             WHERE earlier.user_id = post.user_id
+               AND earlier.status = 'completed'
+               AND earlier.started_at < post.started_at
+           )`)}
+         ) e
+         WHERE post.id = ANY($1::uuid[])
+           AND e.exercise_key IN (
+             SELECT tops.exercise_key FROM tops WHERE tops.session_id = post.id
+           )
+         GROUP BY post.id, e.exercise_key
+       )
+       SELECT
+         t.session_id,
+         t.exercise_name,
+         t.best_weight_kg,
+         t.best_weight_reps,
+         t.best_one_rep_max_kg,
+         t.best_one_rep_max_weight_kg,
+         t.best_one_rep_max_reps,
+         t.best_bodyweight_reps,
+         prev.session_id IS NOT NULL AS has_previous,
+         prev.weight_kg AS prev_weight_kg,
+         prev.one_rep_max_kg AS prev_one_rep_max_kg,
+         prev.bodyweight_reps AS prev_bodyweight_reps
+       FROM tops t
+       LEFT JOIN prev
+         ON prev.session_id = t.session_id AND prev.exercise_key = t.exercise_key
+       ORDER BY t.session_id, t.position, t.exercise_key`,
+      [sessionIds],
+    );
+    return rows as ExerciseBestsRow[];
   },
 
   findRecentKudos: async (

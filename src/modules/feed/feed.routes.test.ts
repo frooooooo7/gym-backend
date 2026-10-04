@@ -45,6 +45,7 @@ const SQL = {
   postStats: "WITH ORDINALITY",
   socialStats: "AS has_kudoed",
   topExercises: "PARTITION BY tse.session_id",
+  exerciseBests: "AS prev_one_rep_max_kg",
   recentKudos: "rk.created_at DESC",
   insertKudo: "INSERT INTO session_kudos",
   deleteKudo: "DELETE FROM session_kudos",
@@ -169,6 +170,7 @@ const expectedPost = {
     },
     { name: "Podciąganie na drążku", completedSets: 3, bestSet: null },
   ],
+  personalRecords: [],
   kudosCount: 3,
   commentCount: 1,
   hasKudoed: false,
@@ -258,6 +260,7 @@ describe("GET /feed", () => {
       SQL.postStats,
       SQL.socialStats,
       SQL.topExercises,
+      SQL.exerciseBests,
       SQL.recentKudos,
     ]) {
       const calls = mockQuery.mock.calls.filter((call) =>
@@ -268,9 +271,111 @@ describe("GET /feed", () => {
     }
     expect(findCall(SQL.socialStats)?.[1]).toEqual([[SESSION_ID], USER_ID]);
     // warm-up sets never count toward a post's totals or best sets
-    for (const marker of [SQL.postStats, SQL.topExercises]) {
+    for (const marker of [SQL.postStats, SQL.topExercises, SQL.exerciseBests]) {
       expect(String(findCall(marker)?.[0])).toContain("set_type <> 'warmup'");
     }
+  });
+
+  it("lists new personal records in exercise order", async () => {
+    const bests = (overrides: Record<string, unknown>) => ({
+      session_id: SESSION_ID,
+      exercise_name: "Przysiad",
+      best_weight_kg: null,
+      best_weight_reps: null,
+      best_one_rep_max_kg: null,
+      best_one_rep_max_weight_kg: null,
+      best_one_rep_max_reps: null,
+      best_bodyweight_reps: null,
+      has_previous: true,
+      prev_weight_kg: null,
+      prev_one_rep_max_kg: null,
+      prev_bodyweight_reps: null,
+      ...overrides,
+    });
+    whenSqlContains({
+      [SQL.listFeed]: { rows: [postRow()] },
+      [SQL.exerciseBests]: {
+        rows: [
+          // heavier than ever before -> weight (and 1RM) record
+          bests({
+            best_weight_kg: 120,
+            best_weight_reps: 5,
+            best_one_rep_max_kg: 140,
+            best_one_rep_max_weight_kg: 120,
+            best_one_rep_max_reps: 5,
+            prev_weight_kg: 115,
+            prev_one_rep_max_kg: 134.1667,
+          }),
+          // same weight, more reps -> only an estimated 1RM record
+          bests({
+            exercise_name: "Wyciskanie sztangi na ławce",
+            best_weight_kg: 80,
+            best_weight_reps: 8,
+            best_one_rep_max_kg: 101.3333,
+            best_one_rep_max_weight_kg: 80,
+            best_one_rep_max_reps: 8,
+            prev_weight_kg: 80,
+            prev_one_rep_max_kg: 98.6667,
+          }),
+          // bodyweight reps record
+          bests({
+            exercise_name: "Pompki",
+            best_bodyweight_reps: 40,
+            prev_bodyweight_reps: 36,
+          }),
+          // first time logged -> baseline, not a record
+          bests({
+            exercise_name: "Martwy ciąg",
+            best_weight_kg: 150,
+            best_weight_reps: 3,
+            has_previous: false,
+          }),
+          // not better than before
+          bests({
+            exercise_name: "Wiosłowanie",
+            best_weight_kg: 70,
+            best_weight_reps: 10,
+            best_one_rep_max_kg: 93.3333,
+            prev_weight_kg: 72.5,
+            prev_one_rep_max_kg: 93.3,
+          }),
+        ],
+      },
+    });
+
+    const res = await request(app).get("/feed").set(authHeaders());
+
+    expect(res.status).toBe(200);
+    expect(res.body.items[0].personalRecords).toEqual([
+      {
+        exerciseName: "Przysiad",
+        kinds: ["weight", "oneRepMax"],
+        weightKg: 120,
+        reps: 5,
+        oneRepMaxKg: 140,
+        improvement: 5,
+      },
+      {
+        exerciseName: "Wyciskanie sztangi na ławce",
+        kinds: ["oneRepMax"],
+        weightKg: 80,
+        reps: 8,
+        oneRepMaxKg: 101.33,
+        improvement: 2.67,
+      },
+      {
+        exerciseName: "Pompki",
+        kinds: ["reps"],
+        weightKg: null,
+        reps: 40,
+        oneRepMaxKg: null,
+        improvement: 4,
+      },
+    ]);
+    // compared against the author's earlier completed sessions only
+    const sql = String(findCall(SQL.exerciseBests)?.[0]);
+    expect(sql).toContain("earlier.status = 'completed'");
+    expect(sql).toContain("earlier.started_at < post.started_at");
   });
 
   it("marks own posts and kudoed posts", async () => {
@@ -288,6 +393,7 @@ describe("GET /feed", () => {
       exercisesCount: 0,
       muscles: [],
       topExercises: [],
+      personalRecords: [],
       recentKudos: [],
     });
   });

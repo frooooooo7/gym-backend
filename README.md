@@ -163,6 +163,7 @@ Auth column: 🔒 = `Authorization: Bearer <jwt>` required.
 | POST | `/profile/me/onboarding/complete` | 🔒 | Mark onboarding done (idempotent) → own profile. |
 | POST | `/profile/me/avatar` | 🔒 | Multipart field `avatar` (≤ 5 MB) → `avatarUrl`. |
 | DELETE | `/profile/me/avatar` | 🔒 | Remove avatar. |
+| GET / PUT / DELETE | `/profile/me/body-weight[/:date]` | 🔒 | Body weight log (see [Body weight log](#body-weight-log)). |
 | GET | `/profile/following` | 🔒 | Who I follow (`limit`, `offset`). |
 | GET | `/profile/followers` | 🔒 | My followers (`limit`, `offset`). |
 | GET | `/users/search` | 🔒 | Search users (`q`, `limit`). |
@@ -645,3 +646,25 @@ include them. Each value can be `null` (not given).
 
 A body without any known field returns `400 no_fields_to_update`. The details live on the `users` row,
 so account deletion removes them too.
+
+## Body weight log
+
+A private history of weigh-ins, one entry per calendar day (`/api/v1` only, never in the legacy mounts).
+The date is the day in the client's own timezone, so it travels in the path rather than being derived
+from server time.
+
+| Method & path | Body / query | Response |
+|---|---|---|
+| `GET /profile/me/body-weight` | `?limit=1..1000` (default 365) | `200 { "entries": [{ "date": "2026-10-01", "weightKg": 82.5 }] }`, the newest `limit` entries, oldest first |
+| `PUT /profile/me/body-weight/:date` | `{ "weightKg": 82.5 }` | `200 { "date", "weightKg" }`, creates or replaces that day's entry |
+| `DELETE /profile/me/body-weight/:date` | | `204`, or `404 entry_not_found` |
+
+- `:date` is `YYYY-MM-DD`, a real day from 1900-01-01 up to one day after the server's UTC today
+  (`400 invalid_date`). `weightKg` follows the profile rule: number 30–300, rounded to 0.1
+  (`400 invalid_weight`).
+- `details.weightKg` on the own profile is the **current weight** and follows the newest entry: writing
+  an entry on or after the newest date sets it, deleting the newest entry moves it back to the previous
+  one, deleting the only entry leaves it unchanged. `PATCH /profile/me` still sets it directly without
+  adding an entry.
+- Migration `018_body_weight_entries` turns each existing profile weight into a first entry dated the
+  day the account finished onboarding. Entries are removed with the account.

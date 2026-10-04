@@ -5,6 +5,7 @@ import { logger, serializeError } from "../../common/logger.js";
 import { isForeignKeyViolation, isUniqueViolation } from "../../common/pg-errors.js";
 import { diskPathFromPublicUrl, safeUnlink } from "../../common/uploads.js";
 import { AVATARS_PUBLIC_PREFIX } from "./profile.avatar-upload.js";
+import { HANDLE_PATTERN } from "./profile.schemas.js";
 import {
   profileRepository,
   type FollowingUserRow,
@@ -136,6 +137,20 @@ export const profileService = {
       throw new AppError(404, "user_not_found");
     }
     return formatOwnProfile(row, stats);
+  },
+
+  /**
+   * Live check for the nickname field. The caller's own handle counts as
+   * available; PATCH /profile/me stays the source of truth (409 on a race).
+   */
+  checkHandleAvailability: async (userId: string, handle: string) => {
+    if (!HANDLE_PATTERN.test(handle)) {
+      return { handle, available: false, reason: "invalid_handle" as const };
+    }
+    const taken = await profileRepository.isHandleTakenByOther(handle, userId);
+    return taken
+      ? { handle, available: false, reason: "handle_taken" as const }
+      : { handle, available: true, reason: null };
   },
 
   completeOnboarding: async (userId: string) => {

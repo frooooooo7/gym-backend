@@ -160,6 +160,7 @@ Auth column: 🔒 = `Authorization: Bearer <jwt>` required.
 | GET | `/training-sessions/:sessionId` | 🔒 | **v1 only**: alias of `GET /training-history/:sessionId`. |
 | GET | `/profile/me` | 🔒 | Own profile with stats, `onboardingCompleted` and private `details`. |
 | PATCH | `/profile/me` | 🔒 | `firstName`, `lastName`, `bio`, `handle` and the `details` fields (see [Profile details & onboarding](#profile-details--onboarding)). |
+| GET | `/profile/handle-availability?handle=` | 🔒 | Live nickname check → `{ handle, available, reason }`; `handle` is trimmed + lowercased, `reason` is `invalid_handle`, `handle_taken` or `null`. Your own handle counts as available. 120/min per user. |
 | POST | `/profile/me/onboarding/complete` | 🔒 | Mark onboarding done (idempotent) → own profile. |
 | POST | `/profile/me/avatar` | 🔒 | Multipart field `avatar` (≤ 5 MB) → `avatarUrl`. |
 | DELETE | `/profile/me/avatar` | 🔒 | Remove avatar. |

@@ -87,3 +87,13 @@ export const commentLimiter = rateLimit({
   message: json429,
   keyGenerator: userOrIpKey,
 });
+
+/** 120 nickname availability checks per authenticated user per minute (falls back to IP) */
+export const handleCheckLimiter = rateLimit({
+  windowMs: 60 * 1_000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: json429,
+  keyGenerator: userOrIpKey,
+});

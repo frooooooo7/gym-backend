@@ -428,6 +428,58 @@ describe("profile routes", () => {
     expect(res.body.error).toBe("handle_taken");
   });
 
+  it("GET /profile/handle-availability reports a free handle, normalized", async () => {
+    whenSqlContains({ "AS taken": { rows: [{ taken: false }] } });
+
+    const res = await request(app)
+      .get("/profile/handle-availability")
+      .query({ handle: "  Anna.Nowak " })
+      .set(authHeaders());
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ handle: "anna.nowak", available: true, reason: null });
+    expect(findCall("AS taken")?.[1]).toEqual(["anna.nowak", USER_ID]);
+  });
+
+  it("GET /profile/handle-availability reports a handle taken by someone else", async () => {
+    whenSqlContains({ "AS taken": { rows: [{ taken: true }] } });
+
+    const res = await request(app)
+      .get("/profile/handle-availability")
+      .query({ handle: "anna.nowak" })
+      .set(authHeaders());
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ handle: "anna.nowak", available: false, reason: "handle_taken" });
+  });
+
+  it("GET /profile/handle-availability rejects a malformed handle without a query", async () => {
+    const res = await request(app)
+      .get("/profile/handle-availability")
+      .query({ handle: "a!" })
+      .set(authHeaders());
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ handle: "a!", available: false, reason: "invalid_handle" });
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("GET /profile/handle-availability returns 400 without a handle", async () => {
+    const res = await request(app)
+      .get("/profile/handle-availability")
+      .set(authHeaders());
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("invalid_handle");
+  });
+
+  it("GET /profile/handle-availability returns 401 without auth", async () => {
+    const res = await request(app)
+      .get("/profile/handle-availability")
+      .query({ handle: "anna.nowak" });
+    expect(res.status).toBe(401);
+  });
+
   it("POST /profile/me/onboarding/complete marks onboarding done", async () => {
     whenSqlContains({
       "UPDATE users": { rows: [ownProfileRow] },

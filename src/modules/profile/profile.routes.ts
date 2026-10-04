@@ -5,11 +5,12 @@ import {
   Router,
 } from "express";
 import { requireAuth } from "../../middleware/auth.js";
-import { followLimiter } from "../../middleware/rate-limit.js";
+import { followLimiter, handleCheckLimiter } from "../../middleware/rate-limit.js";
 import { validateRequest } from "../../middleware/validation.js";
 import { avatarUpload } from "./profile.avatar-upload.js";
 import { profileController } from "./profile.controller.js";
 import {
+  handleAvailabilityQuerySchema,
   profileListQuerySchema,
   profileUpdateSchema,
   userIdParamsSchema,
@@ -39,6 +40,14 @@ profileRouter.patch(
   requireAuth,
   validateRequest({ body: profileUpdateSchema }),
   profileController.updateMe,
+);
+
+profileRouter.get(
+  "/profile/handle-availability",
+  requireAuth,
+  handleCheckLimiter,
+  validateRequest({ query: handleAvailabilityQuerySchema }),
+  profileController.checkHandleAvailability,
 );
 
 profileRouter.post(

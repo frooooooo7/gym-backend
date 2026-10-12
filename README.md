@@ -635,7 +635,8 @@ profile with two extra keys:
     "weightKg": 61.5,
     "trainingGoal": "strength",
     "experienceLevel": "intermediate",
-    "weeklyTrainingDays": 4
+    "weeklyTrainingDays": 4,
+    "targetWeightKg": 58
   }
 }
 ```
@@ -655,6 +656,7 @@ include them. Each value can be `null` (not given).
 | `trainingGoal` | `strength`, `muscle`, `fat_loss`, `general` | `400 invalid_training_goal` |
 | `experienceLevel` | `beginner`, `intermediate`, `advanced` | `400 invalid_experience_level` |
 | `weeklyTrainingDays` | integer 1–7 | `400 invalid_weekly_training_days` |
+| `targetWeightKg` | body weight goal, number 30–300, rounded to 0.1 | `400 invalid_target_weight` |
 
 A body without any known field returns `400 no_fields_to_update`. The details live on the `users` row,
 so account deletion removes them too.

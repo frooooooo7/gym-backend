@@ -510,6 +510,16 @@ const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    // Optional body weight goal (NULL = no goal), private like the other
+    // profile details; the app shows progress and a projected date.
+    name: "020_users_target_weight",
+    sql: `
+      ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS target_weight_kg NUMERIC(4,1)
+          CHECK (target_weight_kg BETWEEN 30 AND 300);
+    `,
+  },
 ];
 
 const ADVISORY_LOCK_ID = 3_742_116_919;

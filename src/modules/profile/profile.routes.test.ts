@@ -54,6 +54,7 @@ const ownProfileRow = {
   training_goal: null,
   experience_level: null,
   weekly_training_days: null,
+  target_weight_kg: null,
   onboarding_completed: true,
 };
 
@@ -65,6 +66,7 @@ const emptyDetails = {
   trainingGoal: null,
   experienceLevel: null,
   weeklyTrainingDays: null,
+  targetWeightKg: null,
 };
 
 /** `YYYY-MM-01` of the current month [years] ago (UTC) — date-independent ages. */
@@ -152,6 +154,7 @@ describe("profile routes", () => {
     const sql = String(findCall("FROM users")?.[0]);
     expect(sql).toContain("to_char(users.birth_date, 'YYYY-MM-DD') AS birth_date");
     expect(sql).toContain("users.weight_kg::float8 AS weight_kg");
+    expect(sql).toContain("users.target_weight_kg::float8 AS target_weight_kg");
   });
 
   it("GET /profile/me returns filled details", async () => {
@@ -167,6 +170,7 @@ describe("profile routes", () => {
             training_goal: "strength",
             experience_level: "intermediate",
             weekly_training_days: 4,
+            target_weight_kg: 58,
             onboarding_completed: false,
           },
         ],
@@ -185,6 +189,7 @@ describe("profile routes", () => {
       trainingGoal: "strength",
       experienceLevel: "intermediate",
       weeklyTrainingDays: 4,
+      targetWeightKg: 58,
     });
   });
 
@@ -306,6 +311,9 @@ describe("profile routes", () => {
     [{ weeklyTrainingDays: 0 }, "invalid_weekly_training_days"],
     [{ weeklyTrainingDays: 8 }, "invalid_weekly_training_days"],
     [{ weeklyTrainingDays: 2.5 }, "invalid_weekly_training_days"],
+    [{ targetWeightKg: 29.9 }, "invalid_target_weight"],
+    [{ targetWeightKg: 300.1 }, "invalid_target_weight"],
+    [{ targetWeightKg: "80" }, "invalid_target_weight"],
   ])("PATCH /profile/me with %j returns 400 %s", async (body, code) => {
     const res = await request(app)
       .patch("/profile/me")
@@ -368,6 +376,7 @@ describe("profile routes", () => {
       trainingGoal: "muscle",
       experienceLevel: "beginner",
       weeklyTrainingDays: 3,
+      targetWeightKg: null,
     });
 
     const update = findCall("UPDATE users");
@@ -405,6 +414,38 @@ describe("profile routes", () => {
     expect(String(update?.[0])).toContain("gender = $2");
     expect(String(update?.[0])).toContain("weight_kg = $3");
     expect(update?.[1]).toEqual([USER_ID, null, null]);
+  });
+
+  it("PATCH /profile/me sets and clears the target weight", async () => {
+    whenSqlContains({
+      "UPDATE users": { rows: [{ ...ownProfileRow, target_weight_kg: 80 }] },
+      following_count: { rows: [statsRow] },
+    });
+
+    const res = await request(app)
+      .patch("/profile/me")
+      .set(authHeaders())
+      .send({ targetWeightKg: 79.96 });
+
+    expect(res.status).toBe(200);
+    expect(res.body.details.targetWeightKg).toBe(80);
+    const update = findCall("UPDATE users");
+    expect(String(update?.[0])).toContain("target_weight_kg = $2");
+    expect(update?.[1]).toEqual([USER_ID, 80]);
+
+    mockQuery.mockClear();
+    whenSqlContains({
+      "UPDATE users": { rows: [ownProfileRow] },
+      following_count: { rows: [statsRow] },
+    });
+    const cleared = await request(app)
+      .patch("/profile/me")
+      .set(authHeaders())
+      .send({ targetWeightKg: null });
+
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.details.targetWeightKg).toBeNull();
+    expect(findCall("UPDATE users")?.[1]).toEqual([USER_ID, null]);
   });
 
   it("PATCH /profile/me returns 409 handle_taken on a duplicate handle", async () => {

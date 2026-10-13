@@ -24,6 +24,7 @@ export interface OwnProfileRow extends ProfileUserRow {
   training_goal: TrainingGoal | null;
   experience_level: ExperienceLevel | null;
   weekly_training_days: number | null;
+  target_weight_kg: number | null;
   onboarding_completed: boolean;
 }
 
@@ -64,6 +65,7 @@ export interface ProfileUpdateFields {
   trainingGoal?: TrainingGoal | null;
   experienceLevel?: ExperienceLevel | null;
   weeklyTrainingDays?: number | null;
+  targetWeightKg?: number | null;
 }
 
 const UPDATABLE_COLUMNS = {
@@ -78,6 +80,7 @@ const UPDATABLE_COLUMNS = {
   trainingGoal: "training_goal",
   experienceLevel: "experience_level",
   weeklyTrainingDays: "weekly_training_days",
+  targetWeightKg: "target_weight_kg",
 } as const satisfies Record<keyof ProfileUpdateFields, string>;
 
 const PROFILE_COLUMNS = "id, first_name, last_name, handle, bio, avatar_url";
@@ -87,7 +90,7 @@ const ownProfileColumns = (t: string) =>
   `${t}.id, ${t}.first_name, ${t}.last_name, ${t}.handle, ${t}.bio, ${t}.avatar_url,
    to_char(${t}.birth_date, 'YYYY-MM-DD') AS birth_date, ${t}.gender, ${t}.height_cm,
    ${t}.weight_kg::float8 AS weight_kg, ${t}.training_goal, ${t}.experience_level,
-   ${t}.weekly_training_days,
+   ${t}.weekly_training_days, ${t}.target_weight_kg::float8 AS target_weight_kg,
    (${t}.onboarding_completed_at IS NOT NULL) AS onboarding_completed`;
 
 export const profileRepository = {

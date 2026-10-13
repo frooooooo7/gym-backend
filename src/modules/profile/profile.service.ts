@@ -64,6 +64,7 @@ const formatOwnProfile = (row: OwnProfileRow, stats: ProfileStatsRow) => ({
     trainingGoal: row.training_goal,
     experienceLevel: row.experience_level,
     weeklyTrainingDays: row.weekly_training_days,
+    targetWeightKg: row.target_weight_kg,
   },
 });
 

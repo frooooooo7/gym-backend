@@ -52,6 +52,16 @@ const intField = (min: number, max: number, code: string) =>
     .nullable()
     .optional();
 
+/** Body weight in kg (30–300), stored with 0.1 kg precision. */
+const weightField = (code: string) =>
+  z
+    .number({ error: code })
+    .min(30, code)
+    .max(300, code)
+    .transform((kg) => Math.round(kg * 10) / 10)
+    .nullable()
+    .optional();
+
 export const profileUpdateSchema = z
   .object({
     firstName: nameField("invalid_first_name"),
@@ -78,16 +88,11 @@ export const profileUpdateSchema = z
       .optional(),
     gender: enumField(GENDERS, "invalid_gender"),
     heightCm: intField(100, 250, "invalid_height"),
-    weightKg: z
-      .number({ error: "invalid_weight" })
-      .min(30, "invalid_weight")
-      .max(300, "invalid_weight")
-      .transform((kg) => Math.round(kg * 10) / 10)
-      .nullable()
-      .optional(),
+    weightKg: weightField("invalid_weight"),
     trainingGoal: enumField(TRAINING_GOALS, "invalid_training_goal"),
     experienceLevel: enumField(EXPERIENCE_LEVELS, "invalid_experience_level"),
     weeklyTrainingDays: intField(1, 7, "invalid_weekly_training_days"),
+    targetWeightKg: weightField("invalid_target_weight"),
   })
   .superRefine((data, ctx) => {
     if (Object.values(data).every((value) => value === undefined)) {

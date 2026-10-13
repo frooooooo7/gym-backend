@@ -91,7 +91,7 @@ r = await req("PATCH", "/profile/me", {
 check(
   "PATCH /profile/me stores handle + details (weight rounded to 0.1)",
   r.status === 200 && r.json.handle === cHandle && r.json.onboardingCompleted === false &&
-    JSON.stringify(r.json.details) === JSON.stringify({ birthDate: "1995-06-15", gender: "male", heightCm: 181, weightKg: 79.4, trainingGoal: "strength", experienceLevel: "intermediate", weeklyTrainingDays: 4 }),
+    JSON.stringify(r.json.details) === JSON.stringify({ birthDate: "1995-06-15", gender: "male", heightCm: 181, weightKg: 79.4, trainingGoal: "strength", experienceLevel: "intermediate", weeklyTrainingDays: 4, targetWeightKg: null }),
   r,
 );
 r = await req("PATCH", "/profile/me", { token: b.token, body: { handle: cHandle } });

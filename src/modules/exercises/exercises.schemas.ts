@@ -1,4 +1,7 @@
 import { z } from "zod";
+import { DISTANCE_UNITS, TRACKING_TYPES } from "../../common/schemas.js";
+
+export { DISTANCE_UNITS, TRACKING_TYPES };
 
 export const VALID_MUSCLES = [
   "chest",
@@ -19,6 +22,10 @@ export const VALID_CATEGORIES = [
   "plyometric",
   "calisthenics",
 ] as const;
+
+/** Co zapisuje seria ćwiczenia: ciężar × powt., same powtórzenia, czas albo czas + dystans. */
+export type TrackingType = (typeof TRACKING_TYPES)[number];
+export type DistanceUnit = (typeof DISTANCE_UNITS)[number];
 
 export const VALID_FILTERS = ["all", "mine", "favourite", "recent"] as const;
 
@@ -47,6 +54,9 @@ export const upsertBodySchema = z.object({
     .default("")
     .transform((s) => s.trim()),
   clientId: z.string().uuid().optional(),
+  // Starsze klienty nie wysyłają — przy edycji zostaje zapisana wartość.
+  trackingType: z.enum(TRACKING_TYPES).optional(),
+  distanceUnit: z.enum(DISTANCE_UNITS).optional(),
 });
 
 export type ListQueryInput = z.infer<typeof listQuerySchema>;

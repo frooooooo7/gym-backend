@@ -53,3 +53,30 @@ export const iconKey = z
   .regex(/^[a-z_]{1,24}$/, "invalid_icon_key")
   .optional()
   .nullable();
+
+/** Set duration in seconds (cardio, plank); null = not tracked. */
+export const durationSeconds = z
+  .number()
+  .int()
+  .min(0, "invalid_duration")
+  .max(86400, "invalid_duration")
+  .optional()
+  .nullable();
+
+/** Set distance in metres; null = not tracked. */
+export const distanceMeters = z
+  .number()
+  .int()
+  .min(0, "invalid_distance")
+  .max(1_000_000, "invalid_distance")
+  .optional()
+  .nullable();
+
+export const TRACKING_TYPES = [
+  "weight_reps",
+  "reps",
+  "duration",
+  "duration_distance",
+] as const;
+
+export const DISTANCE_UNITS = ["km", "m"] as const;

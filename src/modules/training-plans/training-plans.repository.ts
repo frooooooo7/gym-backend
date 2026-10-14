@@ -13,6 +13,8 @@ export interface TrainingPlanSetRow {
   reps: string;
   rir: string | null;
   tempo: string | null;
+  duration_seconds: number | null;
+  distance_m: number | null;
 }
 
 export interface TrainingPlanExerciseRow {
@@ -28,6 +30,8 @@ export interface TrainingPlanExerciseRow {
   exercise_category: string;
   exercise_description: string;
   exercise_image_url: string | null;
+  exercise_tracking_type: string;
+  exercise_distance_unit: string;
   sets: TrainingPlanSetRow[];
 }
 
@@ -130,9 +134,9 @@ const replaceChildren = async (
       (a, b) => (a.position ?? 0) - (b.position ?? 0),
     );
     for (const [setIndex, set] of sets.entries()) {
-      const offset = setOrdinal * 7;
+      const offset = setOrdinal * 9;
       setValueClauses.push(
-        `($${offset + 1}::uuid, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7})`,
+        `($${offset + 1}::uuid, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9})`,
       );
       setParams.push(
         set.clientId ?? null,
@@ -142,6 +146,8 @@ const replaceChildren = async (
         set.reps?.trim() ?? "",
         set.rir?.trim() || null,
         set.tempo?.trim() || null,
+        set.durationSeconds ?? null,
+        set.distanceM ?? null,
       );
       setOrdinal += 1;
     }
@@ -150,7 +156,8 @@ const replaceChildren = async (
 
   await client.query(
     `INSERT INTO training_plan_sets
-      (client_id, plan_exercise_id, position, weight, reps, rir, tempo)
+      (client_id, plan_exercise_id, position, weight, reps, rir, tempo,
+       duration_seconds, distance_m)
      VALUES ${setValueClauses.join(", ")}`,
     setParams,
   );
@@ -183,7 +190,9 @@ const loadPlansForUser = async (
        e.muscles AS exercise_muscles,
        e.category AS exercise_category,
        e.description AS exercise_description,
-       e.image_url AS exercise_image_url
+       e.image_url AS exercise_image_url,
+       e.tracking_type AS exercise_tracking_type,
+       e.distance_unit AS exercise_distance_unit
      FROM training_plan_exercises tpe
      JOIN exercises e ON e.id = tpe.exercise_id
      WHERE tpe.plan_id = ANY($1::uuid[])
@@ -194,7 +203,8 @@ const loadPlansForUser = async (
   const exerciseIds = exerciseRows.map((r) => r.id as string);
 
   const { rows: setRows } = await client.query(
-    `SELECT id, client_id, plan_exercise_id, position, weight, reps, rir, tempo
+    `SELECT id, client_id, plan_exercise_id, position, weight, reps, rir, tempo,
+       duration_seconds, distance_m
      FROM training_plan_sets
      WHERE plan_exercise_id = ANY($1::uuid[])
      ORDER BY position, id`,
@@ -262,7 +272,9 @@ const loadPlan = async (
        e.muscles AS exercise_muscles,
        e.category AS exercise_category,
        e.description AS exercise_description,
-       e.image_url AS exercise_image_url
+       e.image_url AS exercise_image_url,
+       e.tracking_type AS exercise_tracking_type,
+       e.distance_unit AS exercise_distance_unit
      FROM training_plan_exercises tpe
      JOIN exercises e ON e.id = tpe.exercise_id
      WHERE tpe.plan_id = $1
@@ -275,7 +287,8 @@ const loadPlan = async (
   let setRows: TrainingPlanSetRow[] = [];
   if (exerciseIds.length > 0) {
     const result = await client.query(
-      `SELECT id, client_id, plan_exercise_id, position, weight, reps, rir, tempo
+      `SELECT id, client_id, plan_exercise_id, position, weight, reps, rir, tempo,
+       duration_seconds, distance_m
        FROM training_plan_sets
        WHERE plan_exercise_id = ANY($1::uuid[])
        ORDER BY position, id`,

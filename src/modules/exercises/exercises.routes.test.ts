@@ -120,6 +120,8 @@ describe("GET /exercises", () => {
       isFavourite: true,
       isMine: false,
       clientId: null,
+      trackingType: "weight_reps",
+      distanceUnit: "km",
     });
   });
 
@@ -197,6 +199,55 @@ describe("POST /exercises", () => {
       .post("/exercises")
       .set(authHeaders())
       .send({ name: "Test", muscles: [], category: "isolation" });
+    expect(res.status).toBe(400);
+  });
+
+  it("stores the tracking type and distance unit", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        makeExerciseRow({
+          created_by: USER_ID,
+          tracking_type: "duration_distance",
+          distance_unit: "m",
+        }),
+      ],
+    });
+
+    const res = await request(app)
+      .post("/exercises")
+      .set(authHeaders())
+      .send({
+        ...validBody,
+        category: "cardio",
+        trackingType: "duration_distance",
+        distanceUnit: "m",
+      });
+
+    expect(res.status).toBe(201);
+    const [, params] = mockQuery.mock.calls[0] as [string, unknown[]];
+    expect(params.slice(-2)).toEqual(["duration_distance", "m"]);
+    expect(res.body).toMatchObject({
+      trackingType: "duration_distance",
+      distanceUnit: "m",
+    });
+  });
+
+  it("defaults clients that send no tracking type to weight × reps", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [makeExerciseRow({ created_by: USER_ID })],
+    });
+
+    await request(app).post("/exercises").set(authHeaders()).send(validBody);
+
+    const [, params] = mockQuery.mock.calls[0] as [string, unknown[]];
+    expect(params.slice(-2)).toEqual(["weight_reps", "km"]);
+  });
+
+  it("returns 400 for an unknown tracking type", async () => {
+    const res = await request(app)
+      .post("/exercises")
+      .set(authHeaders())
+      .send({ ...validBody, trackingType: "laps" });
     expect(res.status).toBe(400);
   });
 
@@ -325,6 +376,21 @@ describe("PUT /exercises/:id", () => {
       .set(authHeaders())
       .send({ name: "OK" }); // missing muscles and category
     expect(res.status).toBe(400);
+  });
+
+  it("keeps the stored tracking type when an older client omits it", async () => {
+    mockQuery.mockResolvedValue({ rows: [] });
+
+    await request(app)
+      .put(`/exercises/${EXERCISE_ID}`)
+      .set(authHeaders())
+      .send(validBody);
+
+    const update = mockQuery.mock.calls.find((call) =>
+      String(call[0]).includes("UPDATE exercises"),
+    ) as [string, unknown[]];
+    expect(update[0]).toContain("COALESCE($7, tracking_type)");
+    expect(update[1].slice(-2)).toEqual([null, null]);
   });
 
   it("returns 404 when exercise does not exist or is not owned", async () => {

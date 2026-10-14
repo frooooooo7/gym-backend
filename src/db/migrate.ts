@@ -640,6 +640,29 @@ const MIGRATIONS: Migration[] = [
         FOR EACH ROW EXECUTE FUNCTION training_plans_set_updated_at();
     `,
   },
+  {
+    name: "024_notifications",
+    sql: `
+      -- Powiadomienia liczą się z kudosów, obserwacji, kopii planów i postów
+      -- z rekordami. Tu tylko stan: przeczytane, usunięte i ustawienia.
+      ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS notifications_read_at TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS notification_settings JSONB NOT NULL
+          DEFAULT '{}'::jsonb;
+
+      CREATE TABLE IF NOT EXISTS notification_marks (
+        user_id      UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        key          TEXT        NOT NULL,
+        read_at      TIMESTAMPTZ,
+        dismissed_at TIMESTAMPTZ,
+        PRIMARY KEY (user_id, key)
+      );
+
+      CREATE INDEX IF NOT EXISTS training_plans_copied_from_user_idx
+        ON training_plans (copied_from_user_id, created_at DESC)
+        WHERE copied_from_user_id IS NOT NULL;
+    `,
+  },
 ];
 
 const ADVISORY_LOCK_ID = 3_742_116_919;

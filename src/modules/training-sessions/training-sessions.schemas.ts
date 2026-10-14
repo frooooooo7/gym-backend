@@ -1,6 +1,10 @@
 import { z } from "zod";
 import {
   colorKey,
+  DISTANCE_UNITS,
+  distanceMeters,
+  durationSeconds,
+  TRACKING_TYPES,
   iconKey,
   postgresUuid,
   requiredDate,
@@ -115,6 +119,10 @@ const sessionSetSchema = z.object({
   actualTempo: z.string().max(80).optional().nullable(),
   completed: z.boolean().optional().default(false),
   completedAt: z.coerce.date().optional().nullable(),
+  plannedDurationSeconds: durationSeconds,
+  plannedDistanceM: distanceMeters,
+  actualDurationSeconds: durationSeconds,
+  actualDistanceM: distanceMeters,
 });
 
 const sessionExerciseSchema = z.object({
@@ -129,6 +137,9 @@ const sessionExerciseSchema = z.object({
   position: z.number().int().min(0).optional(),
   restSeconds: restSeconds,
   supersetGroup: supersetGroup,
+  // Migawka trybu ćwiczenia — historia rysuje serie tak jak w treningu.
+  exerciseTrackingType: z.enum(TRACKING_TYPES).optional().nullable(),
+  exerciseDistanceUnit: z.enum(DISTANCE_UNITS).optional().nullable(),
   sets: z.array(sessionSetSchema).min(1, "missing_sets").max(50),
 });
 

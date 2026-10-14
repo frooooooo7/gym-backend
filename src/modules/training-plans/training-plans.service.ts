@@ -36,6 +36,8 @@ const formatPlan = (row: TrainingPlanRow) => ({
       category: exercise.exercise_category,
       description: exercise.exercise_description,
       imageUrl: exercise.exercise_image_url,
+      trackingType: exercise.exercise_tracking_type,
+      distanceUnit: exercise.exercise_distance_unit,
     },
     sets: exercise.sets.map((set) => ({
       id: set.id,
@@ -45,6 +47,8 @@ const formatPlan = (row: TrainingPlanRow) => ({
       reps: set.reps,
       rir: set.rir,
       tempo: set.tempo,
+      durationSeconds: set.duration_seconds,
+      distanceM: set.distance_m,
     })),
   })),
 });

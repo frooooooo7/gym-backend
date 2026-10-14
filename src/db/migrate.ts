@@ -561,6 +561,48 @@ const MIGRATIONS: Migration[] = [
           CHECK (plan_icon_key ~ '^[a-z_]{1,24}$');
     `,
   },
+  {
+    name: "022_cardio_tracking",
+    sql: `
+      ALTER TABLE exercises
+        ADD COLUMN IF NOT EXISTS tracking_type TEXT NOT NULL DEFAULT 'weight_reps'
+          CHECK (tracking_type IN ('weight_reps', 'reps', 'duration', 'duration_distance')),
+        ADD COLUMN IF NOT EXISTS distance_unit TEXT NOT NULL DEFAULT 'km'
+          CHECK (distance_unit IN ('km', 'm'));
+
+      -- Plank i burpees zostają przy ciężarze × powt.: istniejące plany
+      -- mają w nich wpisane powtórzenia, a nie czas.
+      INSERT INTO exercises (id, name, muscles, category, is_system, tracking_type, distance_unit) VALUES
+        ('a1000000-0000-0000-0000-000000000015', 'Bieżnia',           ARRAY['legs','glutes'],          'cardio', true, 'duration_distance', 'km'),
+        ('a1000000-0000-0000-0000-000000000016', 'Rower stacjonarny', ARRAY['legs'],                   'cardio', true, 'duration_distance', 'km'),
+        ('a1000000-0000-0000-0000-000000000017', 'Wioślarz',          ARRAY['back','legs','biceps'],   'cardio', true, 'duration_distance', 'm'),
+        ('a1000000-0000-0000-0000-000000000018', 'Orbitrek',          ARRAY['legs','glutes'],          'cardio', true, 'duration',          'km'),
+        ('a1000000-0000-0000-0000-000000000019', 'Skakanka',          ARRAY['legs'],                   'cardio', true, 'duration',          'km')
+      ON CONFLICT (id) DO NOTHING;
+
+      ALTER TABLE training_plan_sets
+        ADD COLUMN IF NOT EXISTS duration_seconds INTEGER
+          CHECK (duration_seconds BETWEEN 0 AND 86400),
+        ADD COLUMN IF NOT EXISTS distance_m INTEGER
+          CHECK (distance_m BETWEEN 0 AND 1000000);
+
+      ALTER TABLE training_session_exercises
+        ADD COLUMN IF NOT EXISTS exercise_tracking_type TEXT
+          CHECK (exercise_tracking_type IN ('weight_reps', 'reps', 'duration', 'duration_distance')),
+        ADD COLUMN IF NOT EXISTS exercise_distance_unit TEXT
+          CHECK (exercise_distance_unit IN ('km', 'm'));
+
+      ALTER TABLE training_session_sets
+        ADD COLUMN IF NOT EXISTS planned_duration_seconds INTEGER
+          CHECK (planned_duration_seconds BETWEEN 0 AND 86400),
+        ADD COLUMN IF NOT EXISTS planned_distance_m INTEGER
+          CHECK (planned_distance_m BETWEEN 0 AND 1000000),
+        ADD COLUMN IF NOT EXISTS actual_duration_seconds INTEGER
+          CHECK (actual_duration_seconds BETWEEN 0 AND 86400),
+        ADD COLUMN IF NOT EXISTS actual_distance_m INTEGER
+          CHECK (actual_distance_m BETWEEN 0 AND 1000000);
+    `,
+  },
 ];
 
 const ADVISORY_LOCK_ID = 3_742_116_919;

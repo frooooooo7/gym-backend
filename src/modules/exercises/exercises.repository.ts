@@ -1,6 +1,10 @@
 import { AppError } from "../../common/errors.js";
 import { requirePool } from "../../db/require-pool.js";
-import type { ListQueryInput } from "./exercises.schemas.js";
+import type {
+  DistanceUnit,
+  ListQueryInput,
+  TrackingType,
+} from "./exercises.schemas.js";
 
 export interface ExerciseRow {
   id: string;
@@ -12,6 +16,8 @@ export interface ExerciseRow {
   created_by: string | null;
   created_at: Date;
   is_favourite: boolean;
+  tracking_type: TrackingType;
+  distance_unit: DistanceUnit;
   /** Identyfikator nadany offline przez klienta — pozwala mu sparować wiersz po zgubionej odpowiedzi. */
   client_id?: string | null;
 }
@@ -21,6 +27,15 @@ const isForeignKeyViolation = (error: unknown) =>
   error !== null &&
   "code" in error &&
   error.code === "23503";
+
+/** Tryb zapisu serii; `undefined` — domyślny przy tworzeniu, bez zmian przy edycji. */
+export interface ExerciseTrackingInput {
+  trackingType?: TrackingType;
+  distanceUnit?: DistanceUnit;
+}
+
+const RETURNING_COLUMNS =
+  "id, name, muscles, category, description, image_url, created_by, created_at, tracking_type, distance_unit";
 
 export type ExerciseRowSansFavourite = Omit<ExerciseRow, "is_favourite">;
 
@@ -79,6 +94,8 @@ export const exercisesRepository = {
         e.created_by,
         e.created_at,
         e.client_id,
+        e.tracking_type,
+        e.distance_unit,
         (ufe.user_id IS NOT NULL) AS is_favourite
       FROM exercises e
       LEFT JOIN user_favourite_exercises ufe
@@ -104,22 +121,37 @@ export const exercisesRepository = {
     description: string,
     userId: string,
     clientId: string | undefined,
+    tracking: ExerciseTrackingInput = {},
   ): Promise<{ row: ExerciseRowSansFavourite; created: boolean }> => {
     const pool = requirePool();
+    const trackingType = tracking.trackingType ?? "weight_reps";
+    const distanceUnit = tracking.distanceUnit ?? "km";
 
     if (clientId) {
       const { rows } = await pool.query(
-        `INSERT INTO exercises (name, muscles, category, is_system, created_by, description, client_id)
-         VALUES ($1, $2, $3, false, $4, $5, $6::uuid)
+        `INSERT INTO exercises (name, muscles, category, is_system, created_by, description, client_id,
+                                tracking_type, distance_unit)
+         VALUES ($1, $2, $3, false, $4, $5, $6::uuid, $7, $8)
          ON CONFLICT (created_by, client_id) WHERE client_id IS NOT NULL
          DO UPDATE SET
            name = EXCLUDED.name,
            muscles = EXCLUDED.muscles,
            category = EXCLUDED.category,
-           description = EXCLUDED.description
-         RETURNING id, name, muscles, category, description, image_url, created_by, created_at, client_id,
+           description = EXCLUDED.description,
+           tracking_type = EXCLUDED.tracking_type,
+           distance_unit = EXCLUDED.distance_unit
+         RETURNING ${RETURNING_COLUMNS}, client_id,
            (xmax = 0) AS inserted`,
-        [name, muscles, category, userId, description, clientId],
+        [
+          name,
+          muscles,
+          category,
+          userId,
+          description,
+          clientId,
+          trackingType,
+          distanceUnit,
+        ],
       );
       const raw = rows[0] as ExerciseRowSansFavourite & { inserted: boolean };
       const { inserted, ...row } = raw;
@@ -127,10 +159,11 @@ export const exercisesRepository = {
     }
 
     const { rows } = await pool.query(
-      `INSERT INTO exercises (name, muscles, category, is_system, created_by, description)
-       VALUES ($1, $2, $3, false, $4, $5)
-       RETURNING id, name, muscles, category, description, image_url, created_by, created_at`,
-      [name, muscles, category, userId, description],
+      `INSERT INTO exercises (name, muscles, category, is_system, created_by, description,
+                              tracking_type, distance_unit)
+       VALUES ($1, $2, $3, false, $4, $5, $6, $7)
+       RETURNING ${RETURNING_COLUMNS}`,
+      [name, muscles, category, userId, description, trackingType, distanceUnit],
     );
     return { row: rows[0] as ExerciseRowSansFavourite, created: true };
   },
@@ -142,14 +175,26 @@ export const exercisesRepository = {
     description: string,
     exerciseId: string,
     userId: string,
+    tracking: ExerciseTrackingInput = {},
   ): Promise<ExerciseRowSansFavourite | null> => {
     const pool = requirePool();
     const { rows } = await pool.query(
       `UPDATE exercises
-       SET name = $1, muscles = $2, category = $3, description = $4
+       SET name = $1, muscles = $2, category = $3, description = $4,
+           tracking_type = COALESCE($7, tracking_type),
+           distance_unit = COALESCE($8, distance_unit)
        WHERE id = $5 AND created_by = $6
-       RETURNING id, name, muscles, category, description, image_url, created_by, created_at, client_id`,
-      [name, muscles, category, description, exerciseId, userId],
+       RETURNING ${RETURNING_COLUMNS}, client_id`,
+      [
+        name,
+        muscles,
+        category,
+        description,
+        exerciseId,
+        userId,
+        tracking.trackingType ?? null,
+        tracking.distanceUnit ?? null,
+      ],
     );
     if (rows.length === 0) {
       return null;
@@ -216,7 +261,7 @@ export const exercisesRepository = {
     const { rows } = await pool.query(
       `UPDATE exercises SET image_url = $3
        WHERE id = $1 AND created_by = $2
-       RETURNING id, name, muscles, category, description, image_url, created_by, created_at, client_id`,
+       RETURNING ${RETURNING_COLUMNS}, client_id`,
       [exerciseId, userId, imageUrl],
     );
     if (rows.length === 0) {

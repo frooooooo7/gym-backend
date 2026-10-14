@@ -47,6 +47,8 @@ export interface TrainingHistoryExerciseRow {
   note: string | null;
   rest_seconds: number | null;
   superset_group: string | null;
+  exercise_tracking_type: string | null;
+  exercise_distance_unit: string | null;
 }
 
 export interface TrainingHistorySetRow {
@@ -62,6 +64,10 @@ export interface TrainingHistorySetRow {
   actual_reps: string | number | null;
   actual_rir: string | number | null;
   actual_tempo: string | null;
+  planned_duration_seconds: number | null;
+  planned_distance_m: number | null;
+  actual_duration_seconds: number | null;
+  actual_distance_m: number | null;
   completed: boolean;
   completed_at: Date | null;
 }
@@ -227,7 +233,9 @@ export const trainingHistoryRepository = {
         tse.position,
         tse.note,
         tse.rest_seconds,
-        tse.superset_group
+        tse.superset_group,
+        tse.exercise_tracking_type,
+        tse.exercise_distance_unit
       FROM training_session_exercises tse
       WHERE tse.session_id = $1::uuid
       ORDER BY tse.position ASC, tse.id ASC
@@ -255,6 +263,10 @@ export const trainingHistoryRepository = {
         actual_reps,
         actual_rir,
         actual_tempo,
+        planned_duration_seconds,
+        planned_distance_m,
+        actual_duration_seconds,
+        actual_distance_m,
         completed,
         completed_at
       FROM training_session_sets

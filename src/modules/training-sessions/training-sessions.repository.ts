@@ -26,6 +26,10 @@ export interface TrainingSessionSetRow {
   completed: boolean;
   completed_at: Date | null;
   set_type: "normal" | "warmup" | "failure" | "drop";
+  planned_duration_seconds: number | null;
+  planned_distance_m: number | null;
+  actual_duration_seconds: number | null;
+  actual_distance_m: number | null;
 }
 
 export interface TrainingSessionExerciseRow {
@@ -42,6 +46,8 @@ export interface TrainingSessionExerciseRow {
   note: string | null;
   rest_seconds: number | null;
   superset_group: string | null;
+  exercise_tracking_type: string | null;
+  exercise_distance_unit: string | null;
   sets: TrainingSessionSetRow[];
 }
 
@@ -88,9 +94,9 @@ const replaceChildren = async (
   const exerciseValueClauses: string[] = [];
   const exerciseParams: unknown[] = [];
   for (const [exerciseIndex, exercise] of exercises.entries()) {
-    const offset = exerciseIndex * 13;
+    const offset = exerciseIndex * 15;
     exerciseValueClauses.push(
-      `($${offset + 1}::uuid, $${offset + 2}::uuid, $${offset + 3}, $${offset + 4}::uuid, $${offset + 5}::uuid, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13})`,
+      `($${offset + 1}::uuid, $${offset + 2}::uuid, $${offset + 3}, $${offset + 4}::uuid, $${offset + 5}::uuid, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14}, $${offset + 15})`,
     );
     exerciseParams.push(
       exerciseIds[exerciseIndex],
@@ -106,13 +112,16 @@ const replaceChildren = async (
       exercise.note ?? null,
       exercise.restSeconds ?? null,
       exercise.supersetGroup ?? null,
+      exercise.exerciseTrackingType ?? null,
+      exercise.exerciseDistanceUnit ?? null,
     );
   }
   await client.query(
     `INSERT INTO training_session_exercises
       (id, client_id, session_id, exercise_id, exercise_client_id, exercise_name,
        exercise_muscles, exercise_category, exercise_image_url, position, note,
-       rest_seconds, superset_group)
+       rest_seconds, superset_group, exercise_tracking_type,
+       exercise_distance_unit)
      VALUES ${exerciseValueClauses.join(", ")}`,
     exerciseParams,
   );
@@ -126,10 +135,13 @@ const replaceChildren = async (
       (a, b) => (a.position ?? 0) - (b.position ?? 0),
     );
     for (const [setIndex, set] of sets.entries()) {
-      const offset = setOrdinal * 14;
-      setValueClauses.push(
-        `($${offset + 1}::uuid, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14})`,
+      const offset = setOrdinal * 18;
+      const placeholders = Array.from(
+        { length: 18 },
+        (_, i) => `$${offset + i + 1}`,
       );
+      placeholders[0] += "::uuid";
+      setValueClauses.push(`(${placeholders.join(", ")})`);
       setParams.push(
         set.clientId ?? null,
         sessionExerciseId,
@@ -145,6 +157,10 @@ const replaceChildren = async (
         set.completed,
         set.completedAt ?? null,
         set.setType,
+        set.plannedDurationSeconds ?? null,
+        set.plannedDistanceM ?? null,
+        set.actualDurationSeconds ?? null,
+        set.actualDistanceM ?? null,
       );
       setOrdinal += 1;
     }
@@ -155,7 +171,9 @@ const replaceChildren = async (
     `INSERT INTO training_session_sets
       (client_id, session_exercise_id, position, planned_weight, planned_reps,
        planned_rir, planned_tempo, actual_weight, actual_reps, actual_rir,
-       actual_tempo, completed, completed_at, set_type)
+       actual_tempo, completed, completed_at, set_type,
+       planned_duration_seconds, planned_distance_m, actual_duration_seconds,
+       actual_distance_m)
      VALUES ${setValueClauses.join(", ")}`,
     setParams,
   );
@@ -315,7 +333,8 @@ const loadSessions = async (
   const { rows: exerciseRows } = await client.query(
     `SELECT id, client_id, session_id, exercise_id, exercise_client_id,
             exercise_name, exercise_muscles, exercise_category,
-            exercise_image_url, position, note, rest_seconds, superset_group
+            exercise_image_url, position, note, rest_seconds, superset_group,
+            exercise_tracking_type, exercise_distance_unit
      FROM training_session_exercises
      WHERE session_id = ANY($1::uuid[])
      ORDER BY position, id`,
@@ -337,7 +356,8 @@ const loadSessions = async (
     `SELECT id, client_id, session_exercise_id, position, planned_weight,
             planned_reps, planned_rir, planned_tempo, actual_weight,
             actual_reps, actual_rir, actual_tempo, completed, completed_at,
-            set_type
+            set_type, planned_duration_seconds, planned_distance_m,
+            actual_duration_seconds, actual_distance_m
      FROM training_session_sets
      WHERE session_exercise_id = ANY($1::uuid[])
      ORDER BY position, id`,

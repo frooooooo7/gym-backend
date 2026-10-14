@@ -278,6 +278,42 @@ check("legacy session (no setType/note sent) reads back as normal sets", legacyI
 r = await req("POST", "/training-sessions", { token: b.token, body: sessionBody("bad type", { exercises: [{ ...ex("X", [["10", "10"]]), sets: [{ ...ex("X", [["10", "10"]]).sets[0], setType: "superset" }] }] }) });
 check("unknown setType is rejected with 400", r.status === 400, r);
 
+// ---- cardio: tracking snapshot, duration and distance round-trip ----
+r = await req("GET", "/exercises?q=wioślarz", { token: b.token });
+const rower = r.json?.find?.((e) => e.id === "a1000000-0000-0000-0000-000000000017");
+check("system rower is a time + distance exercise in metres", rower?.trackingType === "duration_distance" && rower?.distanceUnit === "m", r.json);
+
+r = await req("POST", "/exercises", { token: b.token, body: { name: "Bieżnia (moja)", muscles: ["legs"], category: "cardio", trackingType: "duration_distance", distanceUnit: "km" } });
+check("custom cardio exercise keeps its tracking type", r.status === 201 && r.json.trackingType === "duration_distance" && r.json.distanceUnit === "km", r);
+const myTreadmill = r.json;
+r = await req("PUT", `/exercises/${myTreadmill.id}`, { token: b.token, body: { name: "Bieżnia", muscles: ["legs"], category: "cardio" } });
+check("editing without tracking fields keeps the stored ones", r.status === 200 && r.json.trackingType === "duration_distance", r);
+
+const CARDIO = await create(b, "Kardio", {
+  exercises: [{
+    exerciseId: myTreadmill.id,
+    exerciseName: "Bieżnia",
+    exerciseMuscles: ["legs"],
+    exerciseCategory: "cardio",
+    exerciseTrackingType: "duration_distance",
+    exerciseDistanceUnit: "km",
+    sets: [
+      { position: 0, setType: "warmup", plannedDurationSeconds: 300, actualDurationSeconds: 300, actualDistanceM: 600, completed: true },
+      { position: 1, plannedDurationSeconds: 900, actualDurationSeconds: 767, actualDistanceM: 2100, completed: true },
+    ],
+  }],
+});
+r = await req("GET", `/api/v1/training-history/${CARDIO.id}`, { token: b.token });
+const cardioExercise = r.json?.exercises?.[0];
+check("history detail returns the tracking snapshot", cardioExercise?.trackingType === "duration_distance" && cardioExercise?.distanceUnit === "km", cardioExercise);
+check("history detail returns duration and distance", cardioExercise?.sets?.[1]?.actual?.durationSeconds === 767 && cardioExercise?.sets?.[1]?.actual?.distanceM === 2100 && cardioExercise?.sets?.[1]?.planned?.durationSeconds === 900, cardioExercise?.sets);
+r = await req("GET", `/training-sessions/history`, { token: b.token });
+const cardioItem = r.json?.items?.find((x) => x.id === CARDIO.id);
+check("session sync returns duration and distance", cardioItem?.exercises?.[0]?.exerciseTrackingType === "duration_distance" && cardioItem?.exercises?.[0]?.sets?.[1]?.actualDistanceM === 2100, cardioItem?.exercises);
+
+r = await req("POST", "/training-plans", { token: b.token, body: { name: "Kardio plan", exercises: [{ exerciseId: myTreadmill.id, sets: [{ durationSeconds: 1200, distanceM: 3000 }] }] } });
+check("plan stores a set's duration and distance", r.status === 201 && r.json.exercises[0].sets[0].durationSeconds === 1200 && r.json.exercises[0].sets[0].distanceM === 3000 && r.json.exercises[0].exercise.trackingType === "duration_distance", r);
+
 // ---- race: concurrent create vs delete-by-client-id ----
 const raceIds = Array.from({ length: 15 }, () => randomUUID());
 const results = await Promise.all(raceIds.map(async (cid, i) => {

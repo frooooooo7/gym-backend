@@ -37,6 +37,8 @@ const formatSession = (row: TrainingSessionRow) => ({
     note: exercise.note,
     restSeconds: exercise.rest_seconds,
     supersetGroup: exercise.superset_group,
+    exerciseTrackingType: exercise.exercise_tracking_type,
+    exerciseDistanceUnit: exercise.exercise_distance_unit,
     sets: exercise.sets.map((set) => ({
       id: set.id,
       clientId: set.client_id,
@@ -52,6 +54,10 @@ const formatSession = (row: TrainingSessionRow) => ({
       actualTempo: set.actual_tempo,
       completed: set.completed,
       completedAt: set.completed_at,
+      plannedDurationSeconds: set.planned_duration_seconds,
+      plannedDistanceM: set.planned_distance_m,
+      actualDurationSeconds: set.actual_duration_seconds,
+      actualDistanceM: set.actual_distance_m,
     })),
   })),
 });

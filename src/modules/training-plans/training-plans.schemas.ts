@@ -1,6 +1,8 @@
 import { z } from "zod";
 import {
   colorKey,
+  distanceMeters,
+  durationSeconds,
   iconKey,
   postgresUuid,
   restSeconds,
@@ -26,6 +28,8 @@ const setSchema = z.object({
   reps: z.string().max(40).optional().default(""),
   rir: z.string().max(40).optional().nullable(),
   tempo: z.string().max(80).optional().nullable(),
+  durationSeconds: durationSeconds,
+  distanceM: distanceMeters,
 });
 
 const planExerciseSchema = z.object({

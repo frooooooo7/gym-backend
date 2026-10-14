@@ -216,6 +216,8 @@ describe("trainingPlansRepository.upsert", () => {
       "8",
       null,
       null,
+      null,
+      null,
     ]);
   });
 

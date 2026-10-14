@@ -274,6 +274,8 @@ export const feedService = {
         exerciseMuscles: exercise.exercise_muscles ?? [],
         exerciseCategory: exercise.exercise_category,
         imageUrl: exercise.exercise_image_url,
+        trackingType: exercise.exercise_tracking_type ?? "weight_reps",
+        distanceUnit: exercise.exercise_distance_unit ?? "km",
         sets: (setsByExerciseId.get(exercise.id) ?? []).map(mapSet),
       })),
     };

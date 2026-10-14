@@ -5,6 +5,7 @@ import {
   exercisesRepository,
   type ExerciseRow,
   type ExerciseRowSansFavourite,
+  type ExerciseTrackingInput,
   type OwnedExerciseImageMeta,
 } from "./exercises.repository.js";
 
@@ -17,6 +18,8 @@ const formatExercise = (row: ExerciseRow, userId?: string) => {
     category: row.category,
     description: row.description,
     imageUrl: row.image_url,
+    trackingType: row.tracking_type ?? "weight_reps",
+    distanceUnit: row.distance_unit ?? "km",
     createdAt: row.created_at,
     isFavourite: row.is_favourite,
     isMine,
@@ -24,6 +27,11 @@ const formatExercise = (row: ExerciseRow, userId?: string) => {
     clientId: isMine ? (row.client_id ?? null) : null,
   };
 };
+
+const trackingOf = (body: UpsertBodyInput): ExerciseTrackingInput => ({
+  trackingType: body.trackingType,
+  distanceUnit: body.distanceUnit,
+});
 
 export type ExercisesRepositoryDeps = {
   list: (userId: string, query: ListQueryInput) => Promise<ExerciseRow[]>;
@@ -34,6 +42,7 @@ export type ExercisesRepositoryDeps = {
     description: string,
     userId: string,
     clientId: string | undefined,
+    tracking?: ExerciseTrackingInput,
   ) => Promise<{ row: ExerciseRowSansFavourite; created: boolean }>;
   update: (
     name: string,
@@ -42,6 +51,7 @@ export type ExercisesRepositoryDeps = {
     description: string,
     exerciseId: string,
     userId: string,
+    tracking?: ExerciseTrackingInput,
   ) => Promise<ExerciseRowSansFavourite | null>;
   deleteIfOwned: (exerciseId: string, userId: string) => Promise<boolean>;
   exerciseVisibleToUser: (
@@ -79,6 +89,7 @@ export const createExercisesService = (repo: ExercisesRepositoryDeps) => ({
       body.description,
       userId,
       body.clientId,
+      trackingOf(body),
     );
     return {
       exercise: formatExercise({ ...row, is_favourite: false }, userId),
@@ -99,6 +110,7 @@ export const createExercisesService = (repo: ExercisesRepositoryDeps) => ({
         body.description,
         exerciseId,
         userId,
+        trackingOf(body),
       ),
       repo.hasFavourite(userId, exerciseId),
     ]);

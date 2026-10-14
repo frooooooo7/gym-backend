@@ -280,8 +280,8 @@ describe("training sessions routes", () => {
         );
 
       expect(res.status).toBe(201);
-      expect(insertParams("exercises").at(-3)).toBe("Ławka o 1 dziurkę niżej");
-      expect(insertParams("sets").at(-1)).toBe("warmup");
+      expect(insertParams("exercises").at(-5)).toBe("Ławka o 1 dziurkę niżej");
+      expect(insertParams("sets").at(-5)).toBe("warmup");
       expect(res.body.exercises[0]).toMatchObject({
         note: "Ławka o 1 dziurkę niżej",
         sets: [{ setType: "warmup" }],
@@ -297,8 +297,8 @@ describe("training sessions routes", () => {
         .send(validBody);
 
       expect(res.status).toBe(201);
-      expect(insertParams("exercises").at(-3)).toBeNull();
-      expect(insertParams("sets").at(-1)).toBe("normal");
+      expect(insertParams("exercises").at(-5)).toBeNull();
+      expect(insertParams("sets").at(-5)).toBe("normal");
       expect(res.body.exercises[0].note).toBeNull();
       expect(res.body.exercises[0].sets[0].setType).toBe("normal");
     });
@@ -325,7 +325,7 @@ describe("training sessions routes", () => {
         });
 
       expect(res.status).toBe(201);
-      expect(insertParams("exercises").slice(-2)).toEqual([90, "B"]);
+      expect(insertParams("exercises").slice(-4, -2)).toEqual([90, "B"]);
       const sessionInsert = mockQuery.mock.calls.find((call) =>
         String(call[0]).includes("INSERT INTO training_sessions"),
       )?.[1] as unknown[];
@@ -334,13 +334,67 @@ describe("training sessions routes", () => {
       expect(res.body.exercises[0]).toMatchObject({ restSeconds: 90, supersetGroup: "B" });
     });
 
+    it("stores and returns cardio tracking, duration and distance", async () => {
+      stubInserts(
+        { exercise_tracking_type: "duration_distance", exercise_distance_unit: "m" },
+        {
+          planned_duration_seconds: 900,
+          planned_distance_m: null,
+          actual_duration_seconds: 767,
+          actual_distance_m: 2100,
+        },
+      );
+
+      const res = await request(app)
+        .post("/training-sessions")
+        .set(authHeaders())
+        .send(
+          bodyWith(
+            { exerciseTrackingType: "duration_distance", exerciseDistanceUnit: "m" },
+            {
+              plannedDurationSeconds: 900,
+              actualDurationSeconds: 767,
+              actualDistanceM: 2100,
+            },
+          ),
+        );
+
+      expect(res.status).toBe(201);
+      expect(insertParams("exercises").slice(-2)).toEqual(["duration_distance", "m"]);
+      expect(insertParams("sets").slice(-4)).toEqual([900, null, 767, 2100]);
+      expect(res.body.exercises[0]).toMatchObject({
+        exerciseTrackingType: "duration_distance",
+        exerciseDistanceUnit: "m",
+        sets: [
+          {
+            plannedDurationSeconds: 900,
+            plannedDistanceM: null,
+            actualDurationSeconds: 767,
+            actualDistanceM: 2100,
+          },
+        ],
+      });
+    });
+
+    it.each([
+      ["an unknown tracking type", bodyWith({ exerciseTrackingType: "laps" })],
+      ["a negative duration", bodyWith({}, { actualDurationSeconds: -1 })],
+      ["a fractional distance", bodyWith({}, { actualDistanceM: 1.5 })],
+    ])("rejects %s", async (_label, body) => {
+      const res = await request(app)
+        .post("/training-sessions")
+        .set(authHeaders())
+        .send(body);
+      expect(res.status).toBe(400);
+    });
+
     it("trims the note and stores a blank one as null", async () => {
       stubInserts();
       await request(app)
         .post("/training-sessions")
         .set(authHeaders())
         .send(bodyWith({ note: "  tempo 3-1-1  " }));
-      expect(insertParams("exercises").at(-3)).toBe("tempo 3-1-1");
+      expect(insertParams("exercises").at(-5)).toBe("tempo 3-1-1");
 
       mockQuery.mockClear();
       stubInserts();
@@ -348,7 +402,7 @@ describe("training sessions routes", () => {
         .post("/training-sessions")
         .set(authHeaders())
         .send(bodyWith({ note: "   " }));
-      expect(insertParams("exercises").at(-3)).toBeNull();
+      expect(insertParams("exercises").at(-5)).toBeNull();
     });
 
     it.each([

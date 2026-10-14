@@ -292,7 +292,7 @@ describe("training plans routes", () => {
 
       expect(res.status).toBe(201);
       expect(paramsOf("INSERT INTO training_plans").slice(5)).toEqual([
-        90, "sky", "bolt", "strength", 1.25, false, true, false,
+        90, "sky", "bolt", "strength", 1.25, false, true, false, null,
       ]);
       expect(paramsOf("INSERT INTO training_plan_exercises").slice(5)).toEqual([180, "A"]);
       expect(res.body).toMatchObject({
@@ -324,7 +324,7 @@ describe("training plans routes", () => {
 
       expect(res.status).toBe(201);
       expect(paramsOf("INSERT INTO training_plans").slice(5)).toEqual([
-        120, null, null, null, null, true, true, true,
+        120, null, null, null, null, true, true, true, null,
       ]);
       expect(paramsOf("INSERT INTO training_plan_exercises").slice(5)).toEqual([null, null]);
       expect(res.body.progressionStepKg).toBeNull();
@@ -347,4 +347,145 @@ describe("training plans routes", () => {
       expect(res.body.error).toBe(error);
     });
   });
+
+  describe("plan sharing", () => {
+    const AUTHOR_ID = "aaaaaaaa-0000-0000-0000-000000000002";
+    const COPY_ID = "bbbbbbbb-0000-4000-8000-000000000009";
+    const sourceRow = {
+      ...planRow,
+      user_id: AUTHOR_ID,
+      is_public: true,
+      copy_count: 11,
+      copied_from_user_id: null,
+    };
+    const copyRow = {
+      ...planRow,
+      id: COPY_ID,
+      is_public: false,
+      copy_count: 0,
+      copied_from_plan_id: PLAN_ID,
+      copied_from_user_id: AUTHOR_ID,
+      copied_from_handle: "anna",
+    };
+    const paramsOf = (needle: string) =>
+      mockQuery.mock.calls.find((call) => String(call[0]).includes(needle))?.[1] as unknown[];
+    const sqlCalls = () => mockQuery.mock.calls.map((call) => String(call[0]));
+
+    it("copies a public plan as a private plan without the author's weights", async () => {
+      whenSqlContains({
+        "AND (is_public = true OR user_id = $2)": { rows: [sourceRow] },
+        "JOIN exercises e": { rows: [planExerciseRow] },
+        "FROM training_plan_sets": { rows: [setRow] },
+        "SELECT id FROM training_plans WHERE user_id = $1 AND client_id": { rows: [] },
+        "SELECT id FROM exercises": { rows: [{ id: EXERCISE_ID }] },
+        "INSERT INTO training_plans": { rows: [{ id: COPY_ID }] },
+        "WHERE id = $1 AND user_id = $2": { rows: [copyRow] },
+      });
+
+      const res = await request(app)
+        .post(`/training-plans/${PLAN_ID}/copy`)
+        .set(authHeaders())
+        .send({ clientId: CLIENT_ID });
+
+      expect(res.status).toBe(201);
+      // Kopia: prywatna, z autorem i bez jego ciężarów.
+      expect(paramsOf("INSERT INTO training_plans").slice(-2)).toEqual([PLAN_ID, AUTHOR_ID]);
+      expect(paramsOf("INSERT INTO training_plan_sets")[3]).toBeNull();
+      expect(paramsOf("SET copy_count = copy_count + 1")).toEqual([PLAN_ID]);
+      expect(res.body).toMatchObject({
+        id: COPY_ID,
+        isPublic: false,
+        copiedFrom: { planId: PLAN_ID, userId: AUTHOR_ID, handle: "anna" },
+        skippedExercises: 0,
+      });
+    });
+
+    it("returns the existing copy for a repeated clientId", async () => {
+      whenSqlContains({
+        "AND (is_public = true OR user_id = $2)": { rows: [sourceRow] },
+        "SELECT id FROM training_plans WHERE user_id = $1 AND client_id": {
+          rows: [{ id: COPY_ID }],
+        },
+        "JOIN exercises e": { rows: [planExerciseRow] },
+        "FROM training_plan_sets": { rows: [setRow] },
+        "WHERE id = $1 AND user_id = $2": { rows: [copyRow] },
+      });
+
+      const res = await request(app)
+        .post(`/training-plans/${PLAN_ID}/copy`)
+        .set(authHeaders())
+        .send({ clientId: CLIENT_ID });
+
+      expect(res.status).toBe(200);
+      expect(res.body.id).toBe(COPY_ID);
+      expect(sqlCalls().some((sql) => sql.includes("INSERT INTO training_plans"))).toBe(false);
+      expect(sqlCalls().some((sql) => sql.includes("copy_count + 1"))).toBe(false);
+    });
+
+    it("does not copy a private plan of someone else", async () => {
+      whenSqlContains({});
+
+      const res = await request(app)
+        .post(`/training-plans/${PLAN_ID}/copy`)
+        .set(authHeaders())
+        .send({});
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe("plan_not_found");
+    });
+
+    it("skips exercises the copier cannot see and refuses when none are left", async () => {
+      whenSqlContains({
+        "AND (is_public = true OR user_id = $2)": { rows: [sourceRow] },
+        "JOIN exercises e": { rows: [planExerciseRow] },
+        "FROM training_plan_sets": { rows: [setRow] },
+        "SELECT id FROM exercises": { rows: [] },
+      });
+
+      const res = await request(app)
+        .post(`/training-plans/${PLAN_ID}/copy`)
+        .set(authHeaders())
+        .send({});
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe("no_copyable_exercises");
+      expect(sqlCalls()).toContain("ROLLBACK");
+    });
+
+    it("lists someone's public plans without weights", async () => {
+      whenSqlContains({
+        "SELECT 1 FROM users WHERE id": { rows: [{ "?column?": 1 }] },
+        "AND (is_public = true OR user_id = $2)": { rows: [sourceRow] },
+        "JOIN exercises e": { rows: [planExerciseRow] },
+        "FROM training_plan_sets": { rows: [setRow] },
+      });
+
+      const res = await request(app)
+        .get(`/users/${AUTHOR_ID}/plans`)
+        .set(authHeaders());
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0]).toMatchObject({ isPublic: true, copyCount: 11 });
+      expect(res.body[0].exercises[0].sets[0]).toMatchObject({ weight: null, reps: "8" });
+    });
+
+    it("keeps the stored visibility when an older client omits isPublic", async () => {
+      whenSqlContains({
+        "SELECT id FROM exercises": { rows: [{ id: EXERCISE_ID }] },
+        "UPDATE training_plans": { rows: [], rowCount: 1 },
+        "WHERE id = $1 AND user_id = $2": { rows: [{ ...planRow, is_public: true }] },
+      });
+
+      const res = await request(app)
+        .put(`/training-plans/${PLAN_ID}`)
+        .set(authHeaders())
+        .send(validBody);
+
+      expect(res.status).toBe(200);
+      expect(paramsOf("UPDATE training_plans").at(-1)).toBeNull();
+      expect(res.body.isPublic).toBe(true);
+    });
+  });
 });
+

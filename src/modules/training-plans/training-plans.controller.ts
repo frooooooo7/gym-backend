@@ -2,7 +2,10 @@ import type { Request, Response } from "express";
 import { asyncHandler } from "../../common/async-handler.js";
 import { firstZodMessage, uuidParamsSchema } from "../../common/schemas.js";
 import type { AuthRequest } from "../../middleware/auth.js";
-import { trainingPlanBodySchema } from "./training-plans.schemas.js";
+import {
+  copyPlanBodySchema,
+  trainingPlanBodySchema,
+} from "./training-plans.schemas.js";
 import { trainingPlansService } from "./training-plans.service.js";
 
 export const trainingPlansController = {
@@ -59,5 +62,51 @@ export const trainingPlansController = {
     const userId = (req as AuthRequest).auth.sub;
     await trainingPlansService.deleteIfOwned(userId, parsedParams.data.id);
     res.status(204).send();
+  }),
+
+  listPublic: asyncHandler(async (req: Request, res: Response) => {
+    const viewerId = (req as AuthRequest).auth.sub;
+    const plans = await trainingPlansService.listPublic(
+      viewerId,
+      String(req.params.userId),
+    );
+    res.status(200).json(plans);
+  }),
+
+  copy: asyncHandler(async (req: Request, res: Response) => {
+    const parsedParams = uuidParamsSchema.safeParse(req.params);
+    if (!parsedParams.success) {
+      res.status(400).json({
+        error: firstZodMessage(parsedParams.error.issues),
+      });
+      return;
+    }
+    const parsed = copyPlanBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ error: firstZodMessage(parsed.error.issues) });
+      return;
+    }
+    const viewerId = (req as AuthRequest).auth.sub;
+    const { plan, created } = await trainingPlansService.copy(
+      viewerId,
+      parsedParams.data.id,
+      parsed.data.clientId,
+    );
+    res.status(created ? 201 : 200).json(plan);
+  }),
+
+  copyFromPost: asyncHandler(async (req: Request, res: Response) => {
+    const parsed = copyPlanBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ error: firstZodMessage(parsed.error.issues) });
+      return;
+    }
+    const viewerId = (req as AuthRequest).auth.sub;
+    const { plan, created } = await trainingPlansService.copyFromPost(
+      viewerId,
+      String(req.params.sessionId),
+      parsed.data.clientId,
+    );
+    res.status(created ? 201 : 200).json(plan);
   }),
 };

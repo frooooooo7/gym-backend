@@ -1,5 +1,8 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/auth.js";
+import { planCopyLimiter } from "../../middleware/rate-limit.js";
+import { validateRequest } from "../../middleware/validation.js";
+import { postParamsSchema, userPostsParamsSchema } from "../feed/feed.schemas.js";
 import { trainingPlansController } from "./training-plans.controller.js";
 
 export const trainingPlansRouter = Router();
@@ -23,4 +26,23 @@ trainingPlansRouter.delete(
   "/training-plans/:id",
   requireAuth,
   trainingPlansController.destroy,
+);
+trainingPlansRouter.post(
+  "/training-plans/:id/copy",
+  requireAuth,
+  planCopyLimiter,
+  trainingPlansController.copy,
+);
+trainingPlansRouter.get(
+  "/users/:userId/plans",
+  requireAuth,
+  validateRequest({ params: userPostsParamsSchema }),
+  trainingPlansController.listPublic,
+);
+trainingPlansRouter.post(
+  "/posts/:sessionId/copy-plan",
+  requireAuth,
+  planCopyLimiter,
+  validateRequest({ params: postParamsSchema }),
+  trainingPlansController.copyFromPost,
 );

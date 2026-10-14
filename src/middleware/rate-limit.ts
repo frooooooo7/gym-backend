@@ -47,6 +47,16 @@ export const followLimiter = rateLimit({
   keyGenerator: userOrIpKey,
 });
 
+/** 30 plan copies per authenticated user per minute (falls back to IP) */
+export const planCopyLimiter = rateLimit({
+  windowMs: 60 * 1_000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: json429,
+  keyGenerator: userOrIpKey,
+});
+
 /** 120 kudos give/remove requests per authenticated user per minute (falls back to IP) */
 export const kudosLimiter = rateLimit({
   windowMs: 60 * 1_000,

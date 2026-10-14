@@ -75,6 +75,15 @@ export const trainingPlanBodySchema = z.object({
   highlightPlanColor: z.boolean().optional().default(true),
   showRir: z.boolean().optional().default(true),
   showTempo: z.boolean().optional().default(true),
+  // Brak pola (starszy klient) zostawia widoczność, jaka była.
+  isPublic: z.boolean().optional(),
 });
+
+/** Kopia cudzego planu albo planu z posta; clientId robi ją idempotentną. */
+export const copyPlanBodySchema = z.object({
+  clientId: postgresUuid.optional(),
+});
+
+export type CopyPlanBodyInput = z.infer<typeof copyPlanBodySchema>;
 
 export type TrainingPlanBodyInput = z.infer<typeof trainingPlanBodySchema>;

@@ -26,7 +26,7 @@ import { fileURLToPath } from "node:url";
 
 const SMOKE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(SMOKE_DIR, "..", "..");
-const SCRIPTS = ["social", "feed", "sessions", "account"];
+const SCRIPTS = ["social", "feed", "sessions", "plans", "account"];
 const PREFIXES = { legacy: "", v1: "/api/v1" };
 const HEALTH_TIMEOUT_MS = 90_000;
 const SCRIPT_TIMEOUT_MS = 5 * 60_000;

@@ -169,6 +169,8 @@ describe("trainingPlansRepository.upsert", () => {
       true,
       true,
       true,
+      // isPublic: brak pola → widoczność bez zmian.
+      null,
     ]);
 
     expect(findQueryIndex("BEGIN")).toBeLessThan(
@@ -247,6 +249,8 @@ describe("trainingPlansRepository.upsert", () => {
       true,
       true,
       true,
+      // isPublic: brak pola → widoczność bez zmian.
+      null,
     ]);
   });
 

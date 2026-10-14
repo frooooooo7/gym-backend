@@ -50,6 +50,11 @@ export interface TrainingPlanRow {
   highlight_plan_color: boolean;
   show_rir: boolean;
   show_tempo: boolean;
+  is_public: boolean;
+  copied_from_plan_id: string | null;
+  copied_from_user_id: string | null;
+  copied_from_handle: string | null;
+  copy_count: number;
   created_at: Date;
   updated_at: Date;
   exercises: TrainingPlanExerciseRow[];
@@ -57,7 +62,10 @@ export interface TrainingPlanRow {
 
 const PLAN_COLUMNS = `id, client_id, user_id, name, note, selected_days,
   default_rest_seconds, color_key, icon_key, goal, progression_step_kg,
-  highlight_plan_color, show_rir, show_tempo, created_at, updated_at`;
+  highlight_plan_color, show_rir, show_tempo, is_public, copied_from_plan_id,
+  copied_from_user_id, copy_count, created_at, updated_at,
+  (SELECT u.handle FROM users u WHERE u.id = training_plans.copied_from_user_id)
+    AS copied_from_handle`;
 
 const planSettingsParams = (body: TrainingPlanBodyInput) => [
   body.defaultRestSeconds,
@@ -69,6 +77,42 @@ const planSettingsParams = (body: TrainingPlanBodyInput) => [
   body.showRir,
   body.showTempo,
 ];
+
+type PlanBodyExercise = TrainingPlanBodyInput["exercises"][number];
+
+/** Plan do skopiowania: cudzy plan albo plan zbudowany z posta. */
+export interface PlanCopySource {
+  name: string;
+  note: string | null;
+  defaultRestSeconds: number;
+  colorKey: string | null;
+  iconKey: string | null;
+  goal: string | null;
+  progressionStepKg: string | null;
+  highlightPlanColor: boolean;
+  showRir: boolean;
+  showTempo: boolean;
+  copiedFromPlanId: string | null;
+  copiedFromUserId: string | null;
+  exercises: PlanBodyExercise[];
+}
+
+/** Superseria, z której po odfiltrowaniu zostało jedno ćwiczenie, znika. */
+const dropLoneSupersets = (exercises: PlanBodyExercise[]) => {
+  const counts = new Map<string, number>();
+  for (const exercise of exercises) {
+    if (!exercise.supersetGroup) continue;
+    counts.set(
+      exercise.supersetGroup,
+      (counts.get(exercise.supersetGroup) ?? 0) + 1,
+    );
+  }
+  return exercises.map((exercise) =>
+    exercise.supersetGroup && (counts.get(exercise.supersetGroup) ?? 0) < 2
+      ? { ...exercise, supersetGroup: null }
+      : exercise,
+  );
+};
 
 const assertExercisesVisible = async (
   client: PoolClient,
@@ -89,7 +133,7 @@ const assertExercisesVisible = async (
 const replaceChildren = async (
   client: PoolClient,
   planId: string,
-  body: TrainingPlanBodyInput,
+  body: Pick<TrainingPlanBodyInput, "exercises">,
 ) => {
   await client.query("DELETE FROM training_plan_exercises WHERE plan_id = $1", [
     planId,
@@ -164,19 +208,20 @@ const replaceChildren = async (
 };
 
 /**
- * Loads all plans for a user using only 3 queries (plans → exercises → sets)
- * instead of N+1 per plan.
+ * Loads plans with their exercises and sets using only 3 queries
+ * (plans → exercises → sets) instead of N+1 per plan.
  */
-const loadPlansForUser = async (
+const loadPlansWhere = async (
   client: PoolClient,
-  userId: string,
+  where: string,
+  params: unknown[],
 ): Promise<TrainingPlanRow[]> => {
   const { rows: planRows } = await client.query(
     `SELECT ${PLAN_COLUMNS}
      FROM training_plans
-     WHERE user_id = $1
+     WHERE ${where}
      ORDER BY updated_at DESC, created_at DESC`,
-    [userId],
+    params,
   );
   if (planRows.length === 0) return [];
 
@@ -322,7 +367,7 @@ export const trainingPlansRepository = {
     const pool = requirePool();
     const client = await pool.connect();
     try {
-      return await loadPlansForUser(client, userId);
+      return await loadPlansWhere(client, "user_id = $1", [userId]);
     } finally {
       client.release();
     }
@@ -345,8 +390,10 @@ export const trainingPlansRepository = {
           `INSERT INTO training_plans
              (user_id, client_id, name, note, selected_days,
               default_rest_seconds, color_key, icon_key, goal,
-              progression_step_kg, highlight_plan_color, show_rir, show_tempo)
-           VALUES ($1, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+              progression_step_kg, highlight_plan_color, show_rir, show_tempo,
+              is_public)
+           VALUES ($1, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+                   COALESCE($14::boolean, false))
            ON CONFLICT (user_id, client_id) WHERE client_id IS NOT NULL
            DO UPDATE SET
              name = EXCLUDED.name,
@@ -359,7 +406,9 @@ export const trainingPlansRepository = {
              progression_step_kg = EXCLUDED.progression_step_kg,
              highlight_plan_color = EXCLUDED.highlight_plan_color,
              show_rir = EXCLUDED.show_rir,
-             show_tempo = EXCLUDED.show_tempo
+             show_tempo = EXCLUDED.show_tempo,
+             -- Starszy klient nie wysyła widoczności — zostaje, jak była.
+             is_public = COALESCE($14::boolean, training_plans.is_public)
            RETURNING id, (xmax = 0) AS inserted`,
           [
             userId,
@@ -368,6 +417,7 @@ export const trainingPlansRepository = {
             body.note,
             body.selectedDays,
             ...planSettingsParams(body),
+            body.isPublic ?? null,
           ],
         );
         planId = rows[0].id as string;
@@ -377,8 +427,10 @@ export const trainingPlansRepository = {
           `INSERT INTO training_plans
              (user_id, name, note, selected_days,
               default_rest_seconds, color_key, icon_key, goal,
-              progression_step_kg, highlight_plan_color, show_rir, show_tempo)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+              progression_step_kg, highlight_plan_color, show_rir, show_tempo,
+              is_public)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+                   COALESCE($13::boolean, false))
            RETURNING id`,
           [
             userId,
@@ -386,6 +438,7 @@ export const trainingPlansRepository = {
             body.note,
             body.selectedDays,
             ...planSettingsParams(body),
+            body.isPublic ?? null,
           ],
         );
         planId = rows[0].id as string;
@@ -419,7 +472,8 @@ export const trainingPlansRepository = {
          SET name = $1, note = $2, selected_days = $3,
              default_rest_seconds = $6, color_key = $7, icon_key = $8,
              goal = $9, progression_step_kg = $10, highlight_plan_color = $11,
-             show_rir = $12, show_tempo = $13
+             show_rir = $12, show_tempo = $13,
+             is_public = COALESCE($14::boolean, is_public)
          WHERE id = $4 AND user_id = $5`,
         [
           body.name,
@@ -428,6 +482,7 @@ export const trainingPlansRepository = {
           planId,
           userId,
           ...planSettingsParams(body),
+          body.isPublic ?? null,
         ],
       );
       if (!rowCount) {
@@ -438,6 +493,140 @@ export const trainingPlansRepository = {
       const row = await loadPlan(client, userId, planId);
       await client.query("COMMIT");
       return row;
+    } catch (e) {
+      await client.query("ROLLBACK");
+      throw e;
+    } finally {
+      client.release();
+    }
+  },
+
+  /** Publiczne plany osoby (albo własne, gdy patrzy autor). */
+  listPublic: async (
+    viewerId: string,
+    ownerId: string,
+  ): Promise<TrainingPlanRow[]> => {
+    const pool = requirePool();
+    const client = await pool.connect();
+    try {
+      return await loadPlansWhere(
+        client,
+        "user_id = $1 AND (is_public = true OR user_id = $2)",
+        [ownerId, viewerId],
+      );
+    } finally {
+      client.release();
+    }
+  },
+
+  /** Plan, który widz może skopiować: publiczny albo jego własny. */
+  findCopyable: async (
+    viewerId: string,
+    planId: string,
+  ): Promise<TrainingPlanRow | null> => {
+    const pool = requirePool();
+    const client = await pool.connect();
+    try {
+      const [row] = await loadPlansWhere(
+        client,
+        "id = $1 AND (is_public = true OR user_id = $2)",
+        [planId, viewerId],
+      );
+      return row ?? null;
+    } finally {
+      client.release();
+    }
+  },
+
+  /**
+   * Zapisuje kopię jako nowy, prywatny plan widza. Ćwiczenia, których widz
+   * nie widzi (cudze własne ćwiczenia), są pomijane. Ponowienie z tym samym
+   * [clientId] zwraca już zapisaną kopię.
+   */
+  insertCopy: async (
+    viewerId: string,
+    clientId: string | undefined,
+    source: PlanCopySource,
+  ): Promise<{
+    row: TrainingPlanRow;
+    created: boolean;
+    skippedExercises: number;
+  }> => {
+    const pool = requirePool();
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      if (clientId) {
+        const { rows } = await client.query(
+          "SELECT id FROM training_plans WHERE user_id = $1 AND client_id = $2",
+          [viewerId, clientId],
+        );
+        if (rows.length > 0) {
+          const row = await loadPlan(client, viewerId, rows[0].id as string);
+          await client.query("COMMIT");
+          if (!row) throw new AppError(404, "not_found_or_not_yours");
+          return { row, created: false, skippedExercises: 0 };
+        }
+      }
+
+      const ids = [...new Set(source.exercises.map((e) => e.exerciseId))];
+      const { rows: visibleRows } = await client.query(
+        `SELECT id FROM exercises
+         WHERE id = ANY($1::uuid[]) AND (is_system = true OR created_by = $2)`,
+        [ids, viewerId],
+      );
+      const visible = new Set(visibleRows.map((r) => r.id as string));
+      const exercises = dropLoneSupersets(
+        source.exercises
+          .filter((e) => visible.has(e.exerciseId) && e.sets.length > 0)
+          .map((e, position) => ({ ...e, position })),
+      );
+      if (exercises.length === 0) {
+        throw new AppError(400, "no_copyable_exercises");
+      }
+
+      const { rows } = await client.query(
+        `INSERT INTO training_plans
+           (user_id, client_id, name, note, selected_days,
+            default_rest_seconds, color_key, icon_key, goal,
+            progression_step_kg, highlight_plan_color, show_rir, show_tempo,
+            is_public, copied_from_plan_id, copied_from_user_id)
+         VALUES ($1, $2::uuid, $3, $4, '{}', $5, $6, $7, $8, $9, $10, $11, $12,
+                 false, $13, $14)
+         RETURNING id`,
+        [
+          viewerId,
+          clientId ?? null,
+          source.name,
+          source.note,
+          source.defaultRestSeconds,
+          source.colorKey,
+          source.iconKey,
+          source.goal,
+          source.progressionStepKg,
+          source.highlightPlanColor,
+          source.showRir,
+          source.showTempo,
+          source.copiedFromPlanId,
+          source.copiedFromUserId,
+        ],
+      );
+      const planId = rows[0].id as string;
+      await replaceChildren(client, planId, { exercises });
+      if (source.copiedFromPlanId) {
+        await client.query(
+          "UPDATE training_plans SET copy_count = copy_count + 1 WHERE id = $1",
+          [source.copiedFromPlanId],
+        );
+      }
+      const row = await loadPlan(client, viewerId, planId);
+      if (!row) throw new AppError(404, "not_found_or_not_yours");
+      await client.query("COMMIT");
+      return {
+        row,
+        created: true,
+        skippedExercises: source.exercises.length - exercises.length,
+      };
     } catch (e) {
       await client.query("ROLLBACK");
       throw e;

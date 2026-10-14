@@ -603,6 +603,43 @@ const MIGRATIONS: Migration[] = [
           CHECK (actual_distance_m BETWEEN 0 AND 1000000);
     `,
   },
+  {
+    name: "023_plan_sharing",
+    sql: `
+      -- Plany są domyślnie prywatne; kopia pamięta, od kogo pochodzi.
+      ALTER TABLE training_plans
+        ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT false,
+        ADD COLUMN IF NOT EXISTS copied_from_plan_id UUID
+          REFERENCES training_plans(id) ON DELETE SET NULL,
+        ADD COLUMN IF NOT EXISTS copied_from_user_id UUID
+          REFERENCES users(id) ON DELETE SET NULL,
+        ADD COLUMN IF NOT EXISTS copy_count INTEGER NOT NULL DEFAULT 0
+          CHECK (copy_count >= 0);
+
+      CREATE INDEX IF NOT EXISTS training_plans_public_idx
+        ON training_plans (user_id, updated_at DESC)
+        WHERE is_public = true;
+
+      -- Czyjaś kopia podbija tylko licznik — to nie edycja planu, więc
+      -- updated_at (kolejność listy i synchronizacja autora) zostaje.
+      CREATE OR REPLACE FUNCTION training_plans_set_updated_at()
+      RETURNS TRIGGER LANGUAGE plpgsql AS $$
+      BEGIN
+        IF NEW.copy_count IS DISTINCT FROM OLD.copy_count
+           AND (to_jsonb(NEW) - 'copy_count' - 'updated_at')
+             = (to_jsonb(OLD) - 'copy_count' - 'updated_at') THEN
+          RETURN NEW;
+        END IF;
+        NEW.updated_at = now();
+        RETURN NEW;
+      END;
+      $$;
+
+      CREATE OR REPLACE TRIGGER training_plans_set_updated_at
+        BEFORE UPDATE ON training_plans
+        FOR EACH ROW EXECUTE FUNCTION training_plans_set_updated_at();
+    `,
+  },
 ];
 
 const ADVISORY_LOCK_ID = 3_742_116_919;

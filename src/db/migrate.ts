@@ -520,6 +520,47 @@ const MIGRATIONS: Migration[] = [
           CHECK (target_weight_kg BETWEEN 30 AND 300);
     `,
   },
+  {
+    // Plan look and behaviour (colour, icon, goal, progression step, which
+    // columns the workout screen shows), rest per exercise and supersets.
+    // Sessions keep a copy of the plan's colour/icon and of each exercise's
+    // rest and superset group, so history survives plan edits and deletes.
+    name: "021_plan_customization_rest_supersets",
+    sql: `
+      ALTER TABLE training_plans
+        ADD COLUMN IF NOT EXISTS default_rest_seconds INTEGER NOT NULL DEFAULT 120
+          CHECK (default_rest_seconds BETWEEN 0 AND 1800),
+        ADD COLUMN IF NOT EXISTS color_key TEXT
+          CHECK (color_key ~ '^[a-z]{1,24}$'),
+        ADD COLUMN IF NOT EXISTS icon_key TEXT
+          CHECK (icon_key ~ '^[a-z_]{1,24}$'),
+        ADD COLUMN IF NOT EXISTS goal TEXT
+          CHECK (goal IN ('strength', 'hypertrophy', 'endurance')),
+        ADD COLUMN IF NOT EXISTS progression_step_kg NUMERIC(4,2)
+          CHECK (progression_step_kg > 0 AND progression_step_kg <= 20),
+        ADD COLUMN IF NOT EXISTS highlight_plan_color BOOLEAN NOT NULL DEFAULT true,
+        ADD COLUMN IF NOT EXISTS show_rir BOOLEAN NOT NULL DEFAULT true,
+        ADD COLUMN IF NOT EXISTS show_tempo BOOLEAN NOT NULL DEFAULT true;
+
+      ALTER TABLE training_plan_exercises
+        ADD COLUMN IF NOT EXISTS rest_seconds INTEGER
+          CHECK (rest_seconds BETWEEN 0 AND 1800),
+        ADD COLUMN IF NOT EXISTS superset_group TEXT
+          CHECK (superset_group ~ '^[A-Z]$');
+
+      ALTER TABLE training_session_exercises
+        ADD COLUMN IF NOT EXISTS rest_seconds INTEGER
+          CHECK (rest_seconds BETWEEN 0 AND 1800),
+        ADD COLUMN IF NOT EXISTS superset_group TEXT
+          CHECK (superset_group ~ '^[A-Z]$');
+
+      ALTER TABLE training_sessions
+        ADD COLUMN IF NOT EXISTS plan_color_key TEXT
+          CHECK (plan_color_key ~ '^[a-z]{1,24}$'),
+        ADD COLUMN IF NOT EXISTS plan_icon_key TEXT
+          CHECK (plan_icon_key ~ '^[a-z_]{1,24}$');
+    `,
+  },
 ];
 
 const ADVISORY_LOCK_ID = 3_742_116_919;

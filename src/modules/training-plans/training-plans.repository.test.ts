@@ -45,6 +45,10 @@ const body = {
       ],
     },
   ],
+  defaultRestSeconds: 120,
+  highlightPlanColor: true,
+  showRir: true,
+  showTempo: true,
 };
 
 const planRow = {
@@ -157,6 +161,14 @@ describe("trainingPlansRepository.upsert", () => {
       "FBW",
       "3 dni",
       [1, 3],
+      120,
+      null,
+      null,
+      null,
+      null,
+      true,
+      true,
+      true,
     ]);
 
     expect(findQueryIndex("BEGIN")).toBeLessThan(
@@ -193,6 +205,8 @@ describe("trainingPlansRepository.upsert", () => {
       PLAN_ID,
       EXERCISE_ID,
       0,
+      null,
+      null,
     ]);
     expect(setInsertCall?.[1]).toEqual([
       SET_CLIENT_ID,
@@ -218,7 +232,20 @@ describe("trainingPlansRepository.upsert", () => {
     );
     expect(String(insertCall?.[0])).not.toContain("ON CONFLICT");
     expect(String(insertCall?.[0])).not.toContain("client_id");
-    expect(insertCall?.[1]).toEqual([USER_ID, "FBW", "3 dni", [1, 3]]);
+    expect(insertCall?.[1]).toEqual([
+      USER_ID,
+      "FBW",
+      "3 dni",
+      [1, 3],
+      120,
+      null,
+      null,
+      null,
+      null,
+      true,
+      true,
+      true,
+    ]);
   });
 
   it("rolls back without mutating plans when an exercise is not visible to the user", async () => {

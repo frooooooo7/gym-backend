@@ -246,4 +246,105 @@ describe("training plans routes", () => {
     expect(res.status).toBe(404);
     expect(res.body).toMatchObject({ error: "not_found_or_not_yours" });
   });
+
+  describe("rest, supersets and plan look", () => {
+    const stub = (plan: Record<string, unknown> = {}, exercise: Record<string, unknown> = {}) =>
+      whenSqlContains({
+        "SELECT id FROM exercises": { rows: [{ id: EXERCISE_ID }] },
+        "INSERT INTO training_plans": { rows: [{ id: PLAN_ID, inserted: true }] },
+        "FROM training_plans": { rows: [{ ...planRow, ...plan }] },
+        "FROM training_plan_exercises": { rows: [{ ...planExerciseRow, ...exercise }] },
+        "FROM training_plan_sets": { rows: [setRow] },
+      });
+
+    const paramsOf = (needle: string) =>
+      mockQuery.mock.calls.find((call) => String(call[0]).includes(needle))?.[1] as unknown[];
+
+    it("stores and returns rest per exercise, superset groups and plan settings", async () => {
+      stub(
+        {
+          default_rest_seconds: 90,
+          color_key: "sky",
+          icon_key: "bolt",
+          goal: "strength",
+          progression_step_kg: "1.25",
+          highlight_plan_color: false,
+          show_rir: true,
+          show_tempo: false,
+        },
+        { rest_seconds: 180, superset_group: "A" },
+      );
+
+      const res = await request(app)
+        .post("/training-plans")
+        .set(authHeaders())
+        .send({
+          ...validBody,
+          defaultRestSeconds: 90,
+          colorKey: "sky",
+          iconKey: "bolt",
+          goal: "strength",
+          progressionStepKg: 1.25,
+          highlightPlanColor: false,
+          showTempo: false,
+          exercises: [{ ...validBody.exercises[0], restSeconds: 180, supersetGroup: "A" }],
+        });
+
+      expect(res.status).toBe(201);
+      expect(paramsOf("INSERT INTO training_plans").slice(5)).toEqual([
+        90, "sky", "bolt", "strength", 1.25, false, true, false,
+      ]);
+      expect(paramsOf("INSERT INTO training_plan_exercises").slice(5)).toEqual([180, "A"]);
+      expect(res.body).toMatchObject({
+        defaultRestSeconds: 90,
+        colorKey: "sky",
+        iconKey: "bolt",
+        goal: "strength",
+        progressionStepKg: 1.25,
+        highlightPlanColor: false,
+        showRir: true,
+        showTempo: false,
+      });
+      expect(res.body.exercises[0]).toMatchObject({ restSeconds: 180, supersetGroup: "A" });
+    });
+
+    it("applies the defaults when an older client sends none of the new fields", async () => {
+      stub({
+        default_rest_seconds: 120,
+        color_key: null,
+        icon_key: null,
+        goal: null,
+        progression_step_kg: null,
+        highlight_plan_color: true,
+        show_rir: true,
+        show_tempo: true,
+      });
+
+      const res = await request(app).post("/training-plans").set(authHeaders()).send(validBody);
+
+      expect(res.status).toBe(201);
+      expect(paramsOf("INSERT INTO training_plans").slice(5)).toEqual([
+        120, null, null, null, null, true, true, true,
+      ]);
+      expect(paramsOf("INSERT INTO training_plan_exercises").slice(5)).toEqual([null, null]);
+      expect(res.body.progressionStepKg).toBeNull();
+    });
+
+    it.each([
+      [{ defaultRestSeconds: 1801 }, "invalid_rest_seconds"],
+      [{ colorKey: "Sky Blue" }, "invalid_color_key"],
+      [{ iconKey: "<svg>" }, "invalid_icon_key"],
+      [{ progressionStepKg: 0 }, "invalid_progression_step"],
+      [{ exercises: [{ ...validBody.exercises[0], supersetGroup: "AB" }] }, "invalid_superset_group"],
+      [{ exercises: [{ ...validBody.exercises[0], restSeconds: -5 }] }, "invalid_rest_seconds"],
+    ])("rejects %j with %s", async (patch, error) => {
+      const res = await request(app)
+        .post("/training-plans")
+        .set(authHeaders())
+        .send({ ...validBody, ...patch });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe(error);
+    });
+  });
 });

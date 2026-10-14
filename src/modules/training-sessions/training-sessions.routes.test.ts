@@ -235,7 +235,8 @@ describe("training sessions routes", () => {
     const insertCall = mockQuery.mock.calls.find((call) =>
       String(call[0]).includes("INSERT INTO training_sessions"),
     );
-    expect(insertCall?.[1]?.at(-1)).toBe(false);
+    // shared_to_profile, then plan_color_key and plan_icon_key
+    expect(insertCall?.[1]?.at(-3)).toBe(false);
     expect(res.body.sharedToProfile).toBe(false);
   });
 
@@ -279,7 +280,7 @@ describe("training sessions routes", () => {
         );
 
       expect(res.status).toBe(201);
-      expect(insertParams("exercises").at(-1)).toBe("Ławka o 1 dziurkę niżej");
+      expect(insertParams("exercises").at(-3)).toBe("Ławka o 1 dziurkę niżej");
       expect(insertParams("sets").at(-1)).toBe("warmup");
       expect(res.body.exercises[0]).toMatchObject({
         note: "Ławka o 1 dziurkę niżej",
@@ -296,10 +297,41 @@ describe("training sessions routes", () => {
         .send(validBody);
 
       expect(res.status).toBe(201);
-      expect(insertParams("exercises").at(-1)).toBeNull();
+      expect(insertParams("exercises").at(-3)).toBeNull();
       expect(insertParams("sets").at(-1)).toBe("normal");
       expect(res.body.exercises[0].note).toBeNull();
       expect(res.body.exercises[0].sets[0].setType).toBe("normal");
+    });
+
+    it("stores and returns rest, superset group and the plan's colour and icon", async () => {
+      stubInserts({ rest_seconds: 90, superset_group: "B" });
+      mockQuery.mockImplementation(((impl) => (sql: string) => {
+        if (String(sql).includes("FROM training_sessions")) {
+          return Promise.resolve({
+            rows: [{ ...sessionRow, plan_color_key: "sky", plan_icon_key: "bolt" }],
+            rowCount: 1,
+          });
+        }
+        return impl(sql);
+      })(mockQuery.getMockImplementation()!));
+
+      const res = await request(app)
+        .post("/training-sessions")
+        .set(authHeaders())
+        .send({
+          ...bodyWith({ restSeconds: 90, supersetGroup: "B" }),
+          planColorKey: "sky",
+          planIconKey: "bolt",
+        });
+
+      expect(res.status).toBe(201);
+      expect(insertParams("exercises").slice(-2)).toEqual([90, "B"]);
+      const sessionInsert = mockQuery.mock.calls.find((call) =>
+        String(call[0]).includes("INSERT INTO training_sessions"),
+      )?.[1] as unknown[];
+      expect(sessionInsert.slice(-2)).toEqual(["sky", "bolt"]);
+      expect(res.body).toMatchObject({ planColorKey: "sky", planIconKey: "bolt" });
+      expect(res.body.exercises[0]).toMatchObject({ restSeconds: 90, supersetGroup: "B" });
     });
 
     it("trims the note and stores a blank one as null", async () => {
@@ -308,7 +340,7 @@ describe("training sessions routes", () => {
         .post("/training-sessions")
         .set(authHeaders())
         .send(bodyWith({ note: "  tempo 3-1-1  " }));
-      expect(insertParams("exercises").at(-1)).toBe("tempo 3-1-1");
+      expect(insertParams("exercises").at(-3)).toBe("tempo 3-1-1");
 
       mockQuery.mockClear();
       stubInserts();
@@ -316,7 +348,7 @@ describe("training sessions routes", () => {
         .post("/training-sessions")
         .set(authHeaders())
         .send(bodyWith({ note: "   " }));
-      expect(insertParams("exercises").at(-1)).toBeNull();
+      expect(insertParams("exercises").at(-3)).toBeNull();
     });
 
     it.each([
@@ -831,6 +863,8 @@ describe("training sessions routes", () => {
       true,
       SESSION_ID,
       USER_ID,
+      null,
+      null,
     ]);
     expect(calls.at(-1)).toBe("COMMIT");
   });

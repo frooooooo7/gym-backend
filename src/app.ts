@@ -34,6 +34,7 @@ import { trainingSessionsRouter } from "./modules/training-sessions/training-ses
 import { profileRouter } from "./modules/profile/profile.routes.js";
 import { ensureAvatarsDir } from "./modules/profile/profile.avatar-upload.js";
 import { feedRouter } from "./modules/feed/feed.routes.js";
+import { notificationsRouter } from "./modules/notifications/notifications.routes.js";
 
 const notFound = (_req: Request, res: Response): void => {
   res.status(404).json({ error: "not_found", message: "Route not found" });
@@ -69,6 +70,7 @@ const createApiV1Router = (): Router => {
   v1.use(bodyWeightRouter);
   v1.use(bodyMeasurementsRouter);
   v1.use(feedRouter);
+  v1.use(notificationsRouter);
   // Unknown /api/v1/* must not fall through to the legacy mounts below.
   v1.use(notFound);
   return v1;

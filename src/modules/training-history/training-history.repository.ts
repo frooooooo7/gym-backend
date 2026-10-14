@@ -9,6 +9,8 @@ export interface TrainingHistoryListRow {
   status: "completed" | "cancelled" | "active";
   plan_id: string;
   plan_name: string;
+  plan_color_key: string | null;
+  plan_icon_key: string | null;
   exercises_count: number;
   completed_sets_count: number;
   total_volume_kg: string | number | null;
@@ -26,6 +28,8 @@ export interface TrainingHistoryDetailRow {
   status: "completed" | "cancelled" | "active";
   plan_id: string;
   plan_name: string;
+  plan_color_key: string | null;
+  plan_icon_key: string | null;
   note: string | null;
   shared_to_profile: boolean;
   updated_at: Date;
@@ -41,6 +45,8 @@ export interface TrainingHistoryExerciseRow {
   exercise_image_url: string | null;
   position: number;
   note: string | null;
+  rest_seconds: number | null;
+  superset_group: string | null;
 }
 
 export interface TrainingHistorySetRow {
@@ -86,6 +92,8 @@ const BASE_LIST_SELECT = `
     ts.status,
     ts.plan_id,
     ts.plan_name,
+    ts.plan_color_key,
+    ts.plan_icon_key,
     COALESCE(ec.exercises_count, 0) AS exercises_count,
     COALESCE(sc.completed_sets_count, 0) AS completed_sets_count,
     COALESCE(sc.total_volume_kg, 0) AS total_volume_kg,
@@ -191,6 +199,8 @@ export const trainingHistoryRepository = {
         ts.status,
         ts.plan_id,
         ts.plan_name,
+        ts.plan_color_key,
+        ts.plan_icon_key,
         ts.note,
         ts.shared_to_profile,
         ts.updated_at
@@ -215,7 +225,9 @@ export const trainingHistoryRepository = {
         tse.exercise_category,
         tse.exercise_image_url,
         tse.position,
-        tse.note
+        tse.note,
+        tse.rest_seconds,
+        tse.superset_group
       FROM training_session_exercises tse
       WHERE tse.session_id = $1::uuid
       ORDER BY tse.position ASC, tse.id ASC

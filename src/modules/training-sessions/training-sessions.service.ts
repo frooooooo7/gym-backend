@@ -15,6 +15,8 @@ const formatSession = (row: TrainingSessionRow) => ({
   planId: row.plan_id,
   planClientId: row.plan_client_id,
   planName: row.plan_name,
+  planColorKey: row.plan_color_key,
+  planIconKey: row.plan_icon_key,
   status: row.status,
   note: row.note,
   startedAt: row.started_at,
@@ -33,6 +35,8 @@ const formatSession = (row: TrainingSessionRow) => ({
     exerciseImageUrl: exercise.exercise_image_url,
     position: exercise.position,
     note: exercise.note,
+    restSeconds: exercise.rest_seconds,
+    supersetGroup: exercise.superset_group,
     sets: exercise.sets.map((set) => ({
       id: set.id,
       clientId: set.client_id,

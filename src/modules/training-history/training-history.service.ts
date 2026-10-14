@@ -76,6 +76,8 @@ export const trainingHistoryService = {
       plan: {
         id: row.plan_id,
         name: row.plan_name,
+        colorKey: row.plan_color_key ?? null,
+        iconKey: row.plan_icon_key ?? null,
       },
       exercisesCount: row.exercises_count,
       completedSetsCount: row.completed_sets_count,
@@ -126,6 +128,8 @@ export const trainingHistoryService = {
       plan: {
         id: session.plan_id,
         name: session.plan_name,
+        colorKey: session.plan_color_key ?? null,
+        iconKey: session.plan_icon_key ?? null,
       },
       note: session.note,
       sharedToProfile: session.shared_to_profile,
@@ -136,6 +140,8 @@ export const trainingHistoryService = {
         muscles: exercise.exercise_muscles ?? [],
         imageUrl: exercise.exercise_image_url,
         note: exercise.note,
+        restSeconds: exercise.rest_seconds ?? null,
+        supersetGroup: exercise.superset_group ?? null,
         sets: (setsByExerciseId.get(exercise.id) ?? []).map(mapSet),
       })),
     };

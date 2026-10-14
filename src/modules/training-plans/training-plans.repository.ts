@@ -21,6 +21,8 @@ export interface TrainingPlanExerciseRow {
   plan_id: string;
   exercise_id: string;
   position: number;
+  rest_seconds: number | null;
+  superset_group: string | null;
   exercise_name: string;
   exercise_muscles: string[];
   exercise_category: string;
@@ -36,10 +38,33 @@ export interface TrainingPlanRow {
   name: string;
   note: string | null;
   selected_days: number[];
+  default_rest_seconds: number;
+  color_key: string | null;
+  icon_key: string | null;
+  goal: string | null;
+  progression_step_kg: string | null;
+  highlight_plan_color: boolean;
+  show_rir: boolean;
+  show_tempo: boolean;
   created_at: Date;
   updated_at: Date;
   exercises: TrainingPlanExerciseRow[];
 }
+
+const PLAN_COLUMNS = `id, client_id, user_id, name, note, selected_days,
+  default_rest_seconds, color_key, icon_key, goal, progression_step_kg,
+  highlight_plan_color, show_rir, show_tempo, created_at, updated_at`;
+
+const planSettingsParams = (body: TrainingPlanBodyInput) => [
+  body.defaultRestSeconds,
+  body.colorKey ?? null,
+  body.iconKey ?? null,
+  body.goal ?? null,
+  body.progressionStepKg ?? null,
+  body.highlightPlanColor,
+  body.showRir,
+  body.showTempo,
+];
 
 const assertExercisesVisible = async (
   client: PoolClient,
@@ -75,9 +100,9 @@ const replaceChildren = async (
   const exerciseValueClauses: string[] = [];
   const exerciseParams: unknown[] = [];
   for (const [exerciseIndex, exercise] of exercises.entries()) {
-    const offset = exerciseIndex * 5;
+    const offset = exerciseIndex * 7;
     exerciseValueClauses.push(
-      `($${offset + 1}::uuid, $${offset + 2}::uuid, $${offset + 3}, $${offset + 4}, $${offset + 5})`,
+      `($${offset + 1}::uuid, $${offset + 2}::uuid, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7})`,
     );
     exerciseParams.push(
       exerciseIds[exerciseIndex],
@@ -85,10 +110,13 @@ const replaceChildren = async (
       planId,
       exercise.exerciseId,
       exercise.position ?? exerciseIndex,
+      exercise.restSeconds ?? null,
+      exercise.supersetGroup ?? null,
     );
   }
   await client.query(
-    `INSERT INTO training_plan_exercises (id, client_id, plan_id, exercise_id, position)
+    `INSERT INTO training_plan_exercises
+      (id, client_id, plan_id, exercise_id, position, rest_seconds, superset_group)
      VALUES ${exerciseValueClauses.join(", ")}`,
     exerciseParams,
   );
@@ -137,7 +165,7 @@ const loadPlansForUser = async (
   userId: string,
 ): Promise<TrainingPlanRow[]> => {
   const { rows: planRows } = await client.query(
-    `SELECT id, client_id, user_id, name, note, selected_days, created_at, updated_at
+    `SELECT ${PLAN_COLUMNS}
      FROM training_plans
      WHERE user_id = $1
      ORDER BY updated_at DESC, created_at DESC`,
@@ -150,6 +178,7 @@ const loadPlansForUser = async (
   const { rows: exerciseRows } = await client.query(
     `SELECT
        tpe.id, tpe.client_id, tpe.plan_id, tpe.exercise_id, tpe.position,
+       tpe.rest_seconds, tpe.superset_group,
        e.name AS exercise_name,
        e.muscles AS exercise_muscles,
        e.category AS exercise_category,
@@ -217,7 +246,7 @@ const loadPlan = async (
   planId: string,
 ): Promise<TrainingPlanRow | null> => {
   const { rows: planRows } = await client.query(
-    `SELECT id, client_id, user_id, name, note, selected_days, created_at, updated_at
+    `SELECT ${PLAN_COLUMNS}
      FROM training_plans
      WHERE id = $1 AND user_id = $2`,
     [planId, userId],
@@ -228,6 +257,7 @@ const loadPlan = async (
   const { rows: exerciseRows } = await client.query(
     `SELECT
        tpe.id, tpe.client_id, tpe.plan_id, tpe.exercise_id, tpe.position,
+       tpe.rest_seconds, tpe.superset_group,
        e.name AS exercise_name,
        e.muscles AS exercise_muscles,
        e.category AS exercise_category,
@@ -299,24 +329,51 @@ export const trainingPlansRepository = {
       let created = true;
       if (body.clientId) {
         const { rows } = await client.query(
-          `INSERT INTO training_plans (user_id, client_id, name, note, selected_days)
-           VALUES ($1, $2::uuid, $3, $4, $5)
+          `INSERT INTO training_plans
+             (user_id, client_id, name, note, selected_days,
+              default_rest_seconds, color_key, icon_key, goal,
+              progression_step_kg, highlight_plan_color, show_rir, show_tempo)
+           VALUES ($1, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
            ON CONFLICT (user_id, client_id) WHERE client_id IS NOT NULL
            DO UPDATE SET
              name = EXCLUDED.name,
              note = EXCLUDED.note,
-             selected_days = EXCLUDED.selected_days
+             selected_days = EXCLUDED.selected_days,
+             default_rest_seconds = EXCLUDED.default_rest_seconds,
+             color_key = EXCLUDED.color_key,
+             icon_key = EXCLUDED.icon_key,
+             goal = EXCLUDED.goal,
+             progression_step_kg = EXCLUDED.progression_step_kg,
+             highlight_plan_color = EXCLUDED.highlight_plan_color,
+             show_rir = EXCLUDED.show_rir,
+             show_tempo = EXCLUDED.show_tempo
            RETURNING id, (xmax = 0) AS inserted`,
-          [userId, body.clientId, body.name, body.note, body.selectedDays],
+          [
+            userId,
+            body.clientId,
+            body.name,
+            body.note,
+            body.selectedDays,
+            ...planSettingsParams(body),
+          ],
         );
         planId = rows[0].id as string;
         created = rows[0].inserted as boolean;
       } else {
         const { rows } = await client.query(
-          `INSERT INTO training_plans (user_id, name, note, selected_days)
-           VALUES ($1, $2, $3, $4)
+          `INSERT INTO training_plans
+             (user_id, name, note, selected_days,
+              default_rest_seconds, color_key, icon_key, goal,
+              progression_step_kg, highlight_plan_color, show_rir, show_tempo)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
            RETURNING id`,
-          [userId, body.name, body.note, body.selectedDays],
+          [
+            userId,
+            body.name,
+            body.note,
+            body.selectedDays,
+            ...planSettingsParams(body),
+          ],
         );
         planId = rows[0].id as string;
       }
@@ -346,9 +403,19 @@ export const trainingPlansRepository = {
       await assertExercisesVisible(client, userId, body);
       const { rowCount } = await client.query(
         `UPDATE training_plans
-         SET name = $1, note = $2, selected_days = $3
+         SET name = $1, note = $2, selected_days = $3,
+             default_rest_seconds = $6, color_key = $7, icon_key = $8,
+             goal = $9, progression_step_kg = $10, highlight_plan_color = $11,
+             show_rir = $12, show_tempo = $13
          WHERE id = $4 AND user_id = $5`,
-        [body.name, body.note, body.selectedDays, planId, userId],
+        [
+          body.name,
+          body.note,
+          body.selectedDays,
+          planId,
+          userId,
+          ...planSettingsParams(body),
+        ],
       );
       if (!rowCount) {
         await client.query("ROLLBACK");

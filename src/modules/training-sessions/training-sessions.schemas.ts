@@ -1,5 +1,13 @@
 import { z } from "zod";
-import { postgresUuid, requiredDate, optionalDate } from "../../common/schemas.js";
+import {
+  colorKey,
+  iconKey,
+  postgresUuid,
+  requiredDate,
+  optionalDate,
+  restSeconds,
+  supersetGroup,
+} from "../../common/schemas.js";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -119,6 +127,8 @@ const sessionExerciseSchema = z.object({
   exerciseImageUrl: z.string().max(2000).optional().nullable(),
   note: exerciseNote,
   position: z.number().int().min(0).optional(),
+  restSeconds: restSeconds,
+  supersetGroup: supersetGroup,
   sets: z.array(sessionSetSchema).min(1, "missing_sets").max(50),
 });
 
@@ -128,6 +138,8 @@ export const trainingSessionBodySchema = z
     planId: nullableUuid,
     planClientId: nullableUuid,
     planName: z.string().trim().min(1, "missing_plan_name").max(120),
+    planColorKey: colorKey,
+    planIconKey: iconKey,
     status: z.enum(["active", "completed", "cancelled"]),
     note: optionalText,
     startedAt: requiredDate,

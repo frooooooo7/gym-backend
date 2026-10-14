@@ -40,6 +40,8 @@ export interface TrainingSessionExerciseRow {
   exercise_image_url: string | null;
   position: number;
   note: string | null;
+  rest_seconds: number | null;
+  superset_group: string | null;
   sets: TrainingSessionSetRow[];
 }
 
@@ -50,6 +52,8 @@ export interface TrainingSessionRow {
   plan_id: string | null;
   plan_client_id: string | null;
   plan_name: string;
+  plan_color_key: string | null;
+  plan_icon_key: string | null;
   status: "active" | "completed" | "cancelled";
   note: string | null;
   started_at: Date;
@@ -84,9 +88,9 @@ const replaceChildren = async (
   const exerciseValueClauses: string[] = [];
   const exerciseParams: unknown[] = [];
   for (const [exerciseIndex, exercise] of exercises.entries()) {
-    const offset = exerciseIndex * 11;
+    const offset = exerciseIndex * 13;
     exerciseValueClauses.push(
-      `($${offset + 1}::uuid, $${offset + 2}::uuid, $${offset + 3}, $${offset + 4}::uuid, $${offset + 5}::uuid, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11})`,
+      `($${offset + 1}::uuid, $${offset + 2}::uuid, $${offset + 3}, $${offset + 4}::uuid, $${offset + 5}::uuid, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13})`,
     );
     exerciseParams.push(
       exerciseIds[exerciseIndex],
@@ -100,12 +104,15 @@ const replaceChildren = async (
       trimOrNull(exercise.exerciseImageUrl),
       exercise.position ?? exerciseIndex,
       exercise.note ?? null,
+      exercise.restSeconds ?? null,
+      exercise.supersetGroup ?? null,
     );
   }
   await client.query(
     `INSERT INTO training_session_exercises
       (id, client_id, session_id, exercise_id, exercise_client_id, exercise_name,
-       exercise_muscles, exercise_category, exercise_image_url, position, note)
+       exercise_muscles, exercise_category, exercise_image_url, position, note,
+       rest_seconds, superset_group)
      VALUES ${exerciseValueClauses.join(", ")}`,
     exerciseParams,
   );
@@ -292,7 +299,8 @@ const loadSessions = async (
   const limitSql =
     limit === undefined ? "" : `LIMIT $${queryParams.push(limit)}`;
   const { rows: sessionRows } = await client.query(
-    `SELECT id, client_id, user_id, plan_id, plan_client_id, plan_name, status,
+    `SELECT id, client_id, user_id, plan_id, plan_client_id, plan_name,
+            plan_color_key, plan_icon_key, status,
             note, started_at, finished_at, shared_to_profile, created_at,
             updated_at
      FROM training_sessions
@@ -307,7 +315,7 @@ const loadSessions = async (
   const { rows: exerciseRows } = await client.query(
     `SELECT id, client_id, session_id, exercise_id, exercise_client_id,
             exercise_name, exercise_muscles, exercise_category,
-            exercise_image_url, position, note
+            exercise_image_url, position, note, rest_seconds, superset_group
      FROM training_session_exercises
      WHERE session_id = ANY($1::uuid[])
      ORDER BY position, id`,
@@ -380,8 +388,10 @@ export const trainingSessionsRepository = {
       const { rows } = await client.query(
         `INSERT INTO training_sessions
           (user_id, client_id, plan_id, plan_client_id, plan_name, status,
-           note, started_at, finished_at, shared_to_profile)
-         VALUES ($1, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $8, $9, $10)
+           note, started_at, finished_at, shared_to_profile,
+           plan_color_key, plan_icon_key)
+         VALUES ($1, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $8, $9, $10,
+                 $11, $12)
          ON CONFLICT (user_id, client_id) WHERE client_id IS NOT NULL
          DO UPDATE SET
            plan_id = EXCLUDED.plan_id,
@@ -391,7 +401,9 @@ export const trainingSessionsRepository = {
            note = EXCLUDED.note,
            started_at = EXCLUDED.started_at,
            finished_at = EXCLUDED.finished_at,
-           shared_to_profile = EXCLUDED.shared_to_profile
+           shared_to_profile = EXCLUDED.shared_to_profile,
+           plan_color_key = EXCLUDED.plan_color_key,
+           plan_icon_key = EXCLUDED.plan_icon_key
          RETURNING id, (xmax = 0) AS inserted`,
         [
           userId,
@@ -404,6 +416,8 @@ export const trainingSessionsRepository = {
           body.startedAt,
           body.finishedAt ?? null,
           body.sharedToProfile,
+          body.planColorKey ?? null,
+          body.planIconKey ?? null,
         ],
       );
       const sessionId = rows[0].id as string;
@@ -446,7 +460,7 @@ export const trainingSessionsRepository = {
         `UPDATE training_sessions
          SET plan_id = $1::uuid, plan_client_id = $2::uuid, plan_name = $3,
              status = $4, note = $5, started_at = $6, finished_at = $7,
-             shared_to_profile = $8
+             shared_to_profile = $8, plan_color_key = $11, plan_icon_key = $12
          WHERE id = $9 AND user_id = $10`,
         [
           body.planId ?? null,
@@ -459,6 +473,8 @@ export const trainingSessionsRepository = {
           body.sharedToProfile,
           sessionId,
           userId,
+          body.planColorKey ?? null,
+          body.planIconKey ?? null,
         ],
       );
       if (!rowCount) {

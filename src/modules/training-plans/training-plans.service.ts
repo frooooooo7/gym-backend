@@ -11,6 +11,15 @@ const formatPlan = (row: TrainingPlanRow) => ({
   name: row.name,
   note: row.note,
   selectedDays: row.selected_days,
+  defaultRestSeconds: row.default_rest_seconds,
+  colorKey: row.color_key,
+  iconKey: row.icon_key,
+  goal: row.goal,
+  progressionStepKg:
+    row.progression_step_kg === null ? null : Number(row.progression_step_kg),
+  highlightPlanColor: row.highlight_plan_color,
+  showRir: row.show_rir,
+  showTempo: row.show_tempo,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
   exercises: row.exercises.map((exercise) => ({
@@ -18,6 +27,8 @@ const formatPlan = (row: TrainingPlanRow) => ({
     clientId: exercise.client_id,
     exerciseId: exercise.exercise_id,
     position: exercise.position,
+    restSeconds: exercise.rest_seconds,
+    supersetGroup: exercise.superset_group,
     exercise: {
       id: exercise.exercise_id,
       name: exercise.exercise_name,

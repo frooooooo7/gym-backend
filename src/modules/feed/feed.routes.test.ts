@@ -16,6 +16,7 @@ vi.mock("../../db/pool.js", () => ({
 }));
 
 const { createApp } = await import("../../app.js");
+const { clearActiveUsersRanking } = await import("./feed.service.js");
 
 const JWT_SECRET = "dev-secret-change-in-production-min-32-chars!!";
 const USER_ID = "aaaaaaaa-0000-0000-0000-000000000001";
@@ -55,7 +56,8 @@ const SQL = {
   insertComment: "INSERT INTO session_comments",
   findComment: "FROM session_comments WHERE id = $1 AND session_id = $2",
   deleteComment: "DELETE FROM session_comments",
-  suggested: "AS recent_count",
+  activeRanking: "AS recent_count",
+  suggested: "AS bucket",
   historyExercises: "tse.exercise_category",
   historySets: "AS planned_weight_kg",
 } as const;
@@ -1139,8 +1141,11 @@ describe("comments", () => {
 describe("GET /users/suggested", () => {
   beforeEach(resetDbMocks);
 
+  beforeEach(() => clearActiveUsersRanking());
+
   it("returns suggested users with isFollowing false", async () => {
     whenSqlContains({
+      [SQL.activeRanking]: { rows: [{ user_id: THIRD_USER_ID, recent_count: 4 }] },
       [SQL.suggested]: { rows: [{ ...userListRow, is_following: false }] },
     });
 
@@ -1158,8 +1163,26 @@ describe("GET /users/suggested", () => {
       },
     ]);
     const call = findCall(SQL.suggested);
-    expect(call?.[1]).toEqual([USER_ID, 10]);
-    expect(String(call?.[0])).toContain("interval '30 days'");
+    expect(call?.[1]).toEqual([USER_ID, [THIRD_USER_ID], 10]);
+    expect(String(findCall(SQL.activeRanking)?.[0])).toContain("interval '30 days'");
+  });
+
+  it("computes the activity ranking once and reuses it for later requests", async () => {
+    whenSqlContains({
+      [SQL.activeRanking]: { rows: [{ user_id: THIRD_USER_ID, recent_count: 4 }] },
+      [SQL.suggested]: { rows: [] },
+    });
+
+    await request(app).get("/users/suggested").set(authHeaders());
+    await request(app).get("/users/suggested").set(authHeaders());
+
+    const rankingQueries = mockQuery.mock.calls.filter((c) =>
+      String(c[0]).includes(SQL.activeRanking),
+    );
+    expect(rankingQueries).toHaveLength(1);
+    expect(
+      mockQuery.mock.calls.filter((c) => String(c[0]).includes(SQL.suggested)),
+    ).toHaveLength(2);
   });
 
   it("returns 400 invalid_limit for limit over 30", async () => {

@@ -8,7 +8,7 @@ const repo = {
   deleteIfOwned: vi.fn(),
   exerciseVisibleToUser: vi.fn(),
   getOwnedExerciseImageMeta: vi.fn(),
-  updateExerciseImageUrl: vi.fn(),
+  replaceExerciseImageUrl: vi.fn(),
   insertFavouriteIfAbsent: vi.fn(),
   deleteFavourite: vi.fn(),
   hasFavourite: vi.fn(),

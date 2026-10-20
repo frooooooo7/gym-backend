@@ -5,9 +5,13 @@ import { logger, serializeError } from "../common/logger.js";
 import { env } from "../config/env.js";
 import { isTokenVersionCurrent } from "../modules/auth/token-version.store.js";
 
+/** The only algorithm accepted — never inferred from the token header. */
+export const JWT_ALGORITHM = "HS256" as const;
+
 export interface AuthPayload {
   sub: string;
-  email: string;
+  /** Present only in tokens issued before it was dropped from the claims. */
+  email?: string;
   /** users.token_version at issue time; tokens issued before it existed lack it (= 0). */
   tv?: number;
   iat?: number;
@@ -43,7 +47,9 @@ export const requireAuth = (
   const token = header.slice(7);
   let payload: AuthPayload;
   try {
-    payload = jwt.verify(token, env.jwtSecret) as AuthPayload;
+    payload = jwt.verify(token, env.jwtSecret, {
+      algorithms: [JWT_ALGORITHM],
+    }) as AuthPayload;
   } catch {
     res.status(401).json({
       error: "invalid_token",

@@ -266,6 +266,8 @@ check("login after delete 401 invalid_credentials", r.status === 401 && r.json.e
 
 const count = (q) => sql(`SELECT count(*) FROM ${q}`);
 check("plans gone", await count(`training_plans WHERE user_id='${b.id}'`) === "0");
+check("body weight log gone", await count(`body_weight_entries WHERE user_id='${b.id}'`) === "0");
+check("body measurements gone", await count(`body_measurement_entries WHERE user_id='${b.id}'`) === "0");
 check("sessions gone", await count(`training_sessions WHERE user_id='${b.id}'`) === "0");
 check("tombstones gone", await count(`training_session_tombstones WHERE user_id='${b.id}'`) === "0");
 check("favourites gone", await count(`user_favourite_exercises WHERE user_id='${b.id}'`) === "0");

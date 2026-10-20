@@ -1,13 +1,10 @@
-import {
-  type NextFunction,
-  type Request,
-  type Response,
-  Router,
-} from "express";
+import { Router } from "express";
+import { singleImageUpload } from "../../common/image-upload.js";
+import { uuidParamsSchema } from "../../common/schemas.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { exercisesLimiter } from "../../middleware/rate-limit.js";
+import { validateRequest } from "../../middleware/validation.js";
 import { exercisesController } from "./exercises.controller.js";
-import { exerciseImageUpload } from "./exercises.image-upload.js";
 
 export const exercisesRouter = Router();
 
@@ -15,40 +12,34 @@ export const exercisesRouter = Router();
 // `use(limiter)` would count every request that merely passes through here.
 exercisesRouter.use("/exercises", exercisesLimiter);
 
-const handleExerciseImageUpload = (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
-  exerciseImageUpload.single("image")(req, res, (err: unknown) => {
-    if (err) {
-      res.status(400).json({ error: "invalid_file" });
-      return;
-    }
-    next();
-  });
-};
+// `:id` is checked before anything else touches it — a non-UUID used to reach
+// Postgres (500) and, for uploads, only after the file had been stored.
+const validId = validateRequest({ params: uuidParamsSchema });
 
 exercisesRouter.get("/exercises", requireAuth, exercisesController.list);
 exercisesRouter.post("/exercises", requireAuth, exercisesController.create);
 exercisesRouter.put(
   "/exercises/:id",
   requireAuth,
+  validId,
   exercisesController.update,
 );
 exercisesRouter.delete(
   "/exercises/:id",
   requireAuth,
+  validId,
   exercisesController.destroy,
 );
 exercisesRouter.post(
   "/exercises/:id/favourite",
   requireAuth,
+  validId,
   exercisesController.toggleFavourite,
 );
 exercisesRouter.post(
   "/exercises/:id/image",
   requireAuth,
-  handleExerciseImageUpload,
+  validId,
+  singleImageUpload("image"),
   exercisesController.uploadImage,
 );

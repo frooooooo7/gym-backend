@@ -1,5 +1,6 @@
 import { AppError } from "../../common/errors.js";
 import { requirePool } from "../../db/require-pool.js";
+import { containsPattern } from "../../db/sql-fragments.js";
 import type {
   DistanceUnit,
   ListQueryInput,
@@ -56,7 +57,7 @@ export const exercisesRepository = {
     ];
 
     if (q) {
-      params.push(`%${q.toLowerCase()}%`);
+      params.push(containsPattern(q.toLowerCase()));
       conditions.push(`lower(e.name) LIKE $${params.length}`);
     }
 
@@ -202,17 +203,22 @@ export const exercisesRepository = {
     return rows[0] as ExerciseRowSansFavourite;
   },
 
+  /**
+   * Deletes the user's exercise. Returns the image it had (so the caller can
+   * remove the file), or `null` when nothing was deleted.
+   */
   deleteIfOwned: async (
     exerciseId: string,
     userId: string,
-  ): Promise<boolean> => {
+  ): Promise<{ imageUrl: string | null } | null> => {
     const pool = requirePool();
     try {
-      const { rowCount } = await pool.query(
-        "DELETE FROM exercises WHERE id = $1 AND created_by = $2",
+      const { rows, rowCount } = await pool.query(
+        "DELETE FROM exercises WHERE id = $1 AND created_by = $2 RETURNING image_url",
         [exerciseId, userId],
       );
-      return !!rowCount;
+      if (!rowCount) return null;
+      return { imageUrl: (rows[0]?.image_url as string | null | undefined) ?? null };
     } catch (e) {
       // training_plan_exercises.exercise_id ma ON DELETE RESTRICT — to nie jest
       // błąd serwera, tylko konflikt, który klient może pokazać użytkownikowi.
@@ -252,22 +258,37 @@ export const exercisesRepository = {
     };
   },
 
-  updateExerciseImageUrl: async (
+  /**
+   * Points the user's exercise at a new image and returns the row plus the
+   * URL it replaced. The previous value is read under a row lock, so two
+   * concurrent uploads each see the other's file and neither is orphaned.
+   */
+  replaceExerciseImageUrl: async (
     exerciseId: string,
     userId: string,
     imageUrl: string,
-  ): Promise<ExerciseRowSansFavourite | null> => {
+  ): Promise<{ row: ExerciseRowSansFavourite; previousImageUrl: string | null } | null> => {
     const pool = requirePool();
     const { rows } = await pool.query(
-      `UPDATE exercises SET image_url = $3
-       WHERE id = $1 AND created_by = $2
-       RETURNING ${RETURNING_COLUMNS}, client_id`,
+      `WITH prev AS (
+         SELECT id, image_url FROM exercises
+         WHERE id = $1 AND created_by = $2
+         FOR UPDATE
+       )
+       UPDATE exercises e SET image_url = $3
+       FROM prev
+       WHERE e.id = prev.id
+       RETURNING ${RETURNING_COLUMNS.split(", ").map((c) => `e.${c}`).join(", ")},
+                 e.client_id, prev.image_url AS previous_image_url`,
       [exerciseId, userId, imageUrl],
     );
     if (rows.length === 0) {
       return null;
     }
-    return rows[0] as ExerciseRowSansFavourite;
+    const { previous_image_url, ...row } = rows[0] as ExerciseRowSansFavourite & {
+      previous_image_url: string | null;
+    };
+    return { row, previousImageUrl: previous_image_url ?? null };
   },
 
   insertFavouriteIfAbsent: async (

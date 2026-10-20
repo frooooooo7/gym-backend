@@ -1,6 +1,9 @@
+import fs from "node:fs/promises";
+import path from "node:path";
 import jwt from "jsonwebtoken";
 import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { tinyImage } from "../../test/images.js";
 
 // ── Mock db/pool before importing app ────────────────────────────────────────
 // vi.hoisted ensures these variables are created before vi.mock runs (which
@@ -480,7 +483,7 @@ describe("DELETE /exercises/:id", () => {
   });
 
   it("returns 204 and empty body on successful delete", async () => {
-    mockQuery.mockResolvedValueOnce({ rowCount: 1 });
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ image_url: null }] });
 
     const res = await request(app)
       .delete(`/exercises/${EXERCISE_ID}`)
@@ -545,5 +548,162 @@ describe("POST /exercises/:id/favourite", () => {
       exerciseId: EXERCISE_ID,
       isFavourite: false,
     });
+  });
+});
+
+// ── Images: POST /exercises/:id/image, DELETE removes the file ───────────────
+
+describe("exercise images", () => {
+  const IMAGES_DIR = path.join(process.cwd(), "uploads", "exercise-images");
+  const listImages = async () => {
+    await fs.mkdir(IMAGES_DIR, { recursive: true });
+    return (await fs.readdir(IMAGES_DIR)).sort();
+  };
+  const exists = (p: string) =>
+    fs.stat(p).then(
+      () => true,
+      () => false,
+    );
+
+  beforeEach(() => {
+    mockQuery.mockReset();
+  });
+
+  it.each([
+    ["put", "/exercises/not-a-uuid"],
+    ["delete", "/exercises/not-a-uuid"],
+    ["post", "/exercises/not-a-uuid/favourite"],
+  ] as const)("%s %s returns 400 invalid_id without touching the database", async (method, url) => {
+    const res = await request(app)[method](url).set(authHeaders()).send({});
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: "invalid_id" });
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-UUID id before the upload is read — nothing is stored", async () => {
+    const before = await listImages();
+
+    const res = await request(app)
+      .post("/exercises/not-a-uuid/image")
+      .set(authHeaders())
+      .attach("image", await tinyImage(), { filename: "a.png", contentType: "image/png" });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: "invalid_id" });
+    expect(mockQuery).not.toHaveBeenCalled();
+    expect(await listImages()).toEqual(before);
+  });
+
+  it("returns 404 for an exercise that is not yours and stores nothing", async () => {
+    const before = await listImages();
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // ownership check
+
+    const res = await request(app)
+      .post(`/exercises/${EXERCISE_ID}/image`)
+      .set(authHeaders())
+      .attach("image", await tinyImage(), { filename: "a.png", contentType: "image/png" });
+
+    expect(res.status).toBe(404);
+    expect(await listImages()).toEqual(before);
+  });
+
+  it("rejects bytes that are not an image and stores nothing", async () => {
+    const before = await listImages();
+    mockQuery.mockResolvedValueOnce({ rows: [{ image_url: null }] });
+
+    const res = await request(app)
+      .post(`/exercises/${EXERCISE_ID}/image`)
+      .set(authHeaders())
+      .attach("image", Buffer.from("not really a jpeg"), {
+        filename: "a.jpg",
+        contentType: "image/jpeg",
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ error: "invalid_file" });
+    expect(await listImages()).toEqual(before);
+  });
+
+  it("removes the stored file when the database update fails", async () => {
+    const before = await listImages();
+    mockQuery.mockImplementation((sql: string) => {
+      if (sql.includes("SELECT image_url")) {
+        return Promise.resolve({ rows: [{ image_url: null }] });
+      }
+      if (sql.includes("UPDATE exercises")) {
+        return Promise.reject(new Error("connection terminated"));
+      }
+      return Promise.resolve({ rows: [] });
+    });
+
+    const res = await request(app)
+      .post(`/exercises/${EXERCISE_ID}/image`)
+      .set(authHeaders())
+      .attach("image", await tinyImage(), { filename: "a.png", contentType: "image/png" });
+
+    expect(res.status).toBe(500);
+    expect(await listImages()).toEqual(before);
+  });
+
+  it("stores a WebP and removes the image it replaced", async () => {
+    await listImages();
+    const previous = path.join(IMAGES_DIR, `test-prev-${Date.now()}.png`);
+    await fs.writeFile(previous, "old");
+    const previousUrl = `/uploads/exercise-images/${path.basename(previous)}`;
+    mockQuery.mockImplementation((sql: string, params?: unknown[]) => {
+      if (sql.includes("SELECT image_url")) {
+        return Promise.resolve({ rows: [{ image_url: previousUrl }] });
+      }
+      if (sql.includes("UPDATE exercises")) {
+        return Promise.resolve({
+          rows: [
+            makeExerciseRow({
+              created_by: USER_ID,
+              image_url: params?.[2],
+              previous_image_url: previousUrl,
+            }),
+          ],
+        });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+
+    const res = await request(app)
+      .post(`/exercises/${EXERCISE_ID}/image`)
+      .set(authHeaders())
+      .attach("image", await tinyImage("jpeg"), { filename: "a.jpg", contentType: "image/jpeg" });
+
+    const stored = path.join(IMAGES_DIR, path.basename(String(res.body.imageUrl)));
+    try {
+      expect(res.status).toBe(200);
+      expect(res.body.imageUrl).toMatch(/^\/uploads\/exercise-images\/[0-9a-f-]{36}\.webp$/);
+      expect(res.body).not.toHaveProperty("previous_image_url");
+      expect(await exists(stored)).toBe(true);
+      expect(await exists(previous)).toBe(false);
+    } finally {
+      await fs.rm(stored, { force: true });
+      await fs.rm(previous, { force: true });
+    }
+  });
+
+  it("DELETE /exercises/:id removes the exercise image file", async () => {
+    await listImages();
+    const file = path.join(IMAGES_DIR, `test-del-${Date.now()}.webp`);
+    await fs.writeFile(file, "img");
+    mockQuery.mockResolvedValueOnce({
+      rowCount: 1,
+      rows: [{ image_url: `/uploads/exercise-images/${path.basename(file)}` }],
+    });
+
+    const res = await request(app)
+      .delete(`/exercises/${EXERCISE_ID}`)
+      .set(authHeaders());
+
+    try {
+      expect(res.status).toBe(204);
+      expect(await exists(file)).toBe(false);
+    } finally {
+      await fs.rm(file, { force: true });
+    }
   });
 });

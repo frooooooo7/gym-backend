@@ -16,6 +16,7 @@ import {
   LEGACY_API_PREFIXES,
   legacyApiHeaders,
 } from "./middleware/legacy-api.js";
+import { apiLimiter } from "./middleware/rate-limit.js";
 import {
   getRequestId,
   REQUEST_ID_HEADER,
@@ -40,13 +41,21 @@ const notFound = (_req: Request, res: Response): void => {
   res.status(404).json({ error: "not_found", message: "Route not found" });
 };
 
-/** Body-parser errors (malformed JSON, oversized body) are client errors. */
-const bodyParserError = (
+/**
+ * Client errors that surface as exceptions: body-parser failures (malformed
+ * JSON, oversized body) and Postgres rejecting a malformed value such as a
+ * non-UUID id (`22P02 invalid_text_representation`) that slipped past
+ * validation — a bad request, not a server fault.
+ */
+const clientErrorFrom = (
   err: unknown,
 ): { status: number; code: string } | null => {
   const type = (err as { type?: unknown } | null)?.type;
   if (type === "entity.parse.failed") return { status: 400, code: "invalid_json" };
   if (type === "entity.too.large") return { status: 413, code: "payload_too_large" };
+  if ((err as { code?: unknown } | null)?.code === "22P02") {
+    return { status: 400, code: "invalid_input" };
+  }
   return null;
 };
 
@@ -81,7 +90,7 @@ export const createApp = () => {
 
   app.disable("x-powered-by");
   app.set("etag", false);
-  if (!isDev) app.set("trust proxy", 1);
+  app.set("trust proxy", env.trustProxy);
 
   app.use(requestContext);
 
@@ -94,6 +103,22 @@ export const createApp = () => {
       ? env.corsOrigin.split(",").map((s) => s.trim())
       : false;
   app.use(cors({ origin: corsOrigin, exposedHeaders: [REQUEST_ID_HEADER] }));
+
+  // Before the static mounts, so uploads get nosniff / CSP too.
+  // CORS (above) is the actual cross-origin gatekeeper for this API — Helmet's
+  // default same-origin CORP would silently block browsers from reading
+  // responses across origins even when CORS allows the request (e.g. Flutter
+  // web's dev server port vs this API's port), so relax it to cross-origin.
+  // HSTS is also disabled in dev: it has no TLS listener to redirect to, and
+  // once a browser receives it for `localhost` it force-upgrades ALL local
+  // ports to https for up to a year, breaking every plain-http dev server on
+  // that host until the browser's HSTS state for localhost is cleared.
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: { policy: "cross-origin" },
+      hsts: isDev ? false : undefined,
+    }),
+  );
 
   ensureExerciseImagesDir();
   const exerciseImagesDir = path.join(
@@ -136,31 +161,16 @@ export const createApp = () => {
   );
 
   app.use(compression());
-  // CORS (above) is the actual cross-origin gatekeeper for this API — Helmet's
-  // default same-origin CORP would silently block browsers from reading
-  // responses across origins even when CORS allows the request (e.g. Flutter
-  // web's dev server port vs this API's port), so relax it to cross-origin.
-  // HSTS is also disabled in dev: it has no TLS listener to redirect to, and
-  // once a browser receives it for `localhost` it force-upgrades ALL local
-  // ports to https for up to a year, breaking every plain-http dev server on
-  // that host until the browser's HSTS state for localhost is cleared.
-  app.use(
-    helmet({
-      crossOriginResourcePolicy: { policy: "cross-origin" },
-      hsts: isDev ? false : undefined,
-    }),
-  );
-
   app.use(express.json({ limit: "1mb" }));
 
   // Versioned API. Legacy `/api/v1/training-history*` and
   // `/api/v1/training-sessions*` read aliases are served from here too.
-  app.use(API_V1_PREFIX, createApiV1Router());
+  app.use(API_V1_PREFIX, apiLimiter, createApiV1Router());
 
   // Legacy unprefixed API (same routers, same order as before versioning).
   // Health probes stay unprefixed by design and are not deprecated.
   app.use(healthRouter);
-  app.use(LEGACY_API_PREFIXES, legacyApiHeaders);
+  app.use(LEGACY_API_PREFIXES, apiLimiter, legacyApiHeaders);
   app.use(authRouter);
   app.use(exercisesRouter);
   app.use(trainingPlansRouter);
@@ -179,7 +189,7 @@ export const createApp = () => {
       res.status(err.statusCode).json({ error: err.code, message: err.message });
       return;
     }
-    const clientError = bodyParserError(err);
+    const clientError = clientErrorFrom(err);
     if (clientError) {
       res
         .status(clientError.status)

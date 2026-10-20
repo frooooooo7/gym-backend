@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/auth.js";
+import { writeLimiter } from "../../middleware/rate-limit.js";
 import { validateRequest } from "../../middleware/validation.js";
 import { bodyMeasurementsController } from "./body-measurements.controller.js";
 import {
@@ -21,6 +22,7 @@ bodyMeasurementsRouter.get(
 bodyMeasurementsRouter.put(
   "/profile/me/body-measurements/:date",
   requireAuth,
+  writeLimiter,
   validateRequest({
     params: bodyMeasurementsDateParamsSchema,
     body: bodyMeasurementsUpsertSchema,
@@ -31,6 +33,7 @@ bodyMeasurementsRouter.put(
 bodyMeasurementsRouter.delete(
   "/profile/me/body-measurements/:date",
   requireAuth,
+  writeLimiter,
   validateRequest({ params: bodyMeasurementsDateParamsSchema }),
   bodyMeasurementsController.delete,
 );

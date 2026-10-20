@@ -7,10 +7,12 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: gym
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gym}
+      # No default: a database reachable with the password "gym" is an open door.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: gym
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      # Loopback only. Set POSTGRES_BIND=0.0.0.0 to reach it from other hosts.
+      - "${POSTGRES_BIND:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -25,14 +27,20 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "${API_PORT:-3000}:3000"
+      # Loopback only by default; put a TLS reverse proxy in front for real
+      # traffic (or set API_BIND=0.0.0.0 to test from a phone on the LAN).
+      - "${API_BIND:-127.0.0.1}:${API_PORT:-3000}:3000"
     environment:
       # Default development so local Flutter web (any localhost port) works without CORS_ORIGIN.
       # For production-like runs: NODE_ENV=production JWT_SECRET=... CORS_ORIGIN=https://app.example.com
       NODE_ENV: ${NODE_ENV:-development}
       PORT: "3000"
-      DATABASE_URL: postgresql://gym:${POSTGRES_PASSWORD:-gym}@postgres:5432/gym
-      JWT_SECRET: ${JWT_SECRET:-}
+      DATABASE_URL: postgresql://gym:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/gym
+      # Required — generate with `openssl rand -base64 48`.
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      # false = no reverse proxy in front (the port above is published directly);
+      # set to the number of proxy hops when running behind nginx/Caddy/etc.
+      TRUST_PROXY: ${TRUST_PROXY:-false}
       # Recommended when NODE_ENV=production (comma-separated). Example Flutter web: http://localhost:65425
       CORS_ORIGIN: ${CORS_ORIGIN:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}

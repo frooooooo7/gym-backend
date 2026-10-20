@@ -1,6 +1,10 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/auth.js";
-import { commentLimiter, kudosLimiter } from "../../middleware/rate-limit.js";
+import {
+  commentLimiter,
+  kudosLimiter,
+  searchLimiter,
+} from "../../middleware/rate-limit.js";
 import { validateRequest } from "../../middleware/validation.js";
 import { feedController } from "./feed.controller.js";
 import {
@@ -28,6 +32,7 @@ feedRouter.get(
 feedRouter.get(
   "/users/suggested",
   requireAuth,
+  searchLimiter,
   validateRequest({ query: suggestedUsersQuerySchema }),
   feedController.getSuggestedUsers,
 );

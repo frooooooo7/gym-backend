@@ -1,5 +1,9 @@
 import { requirePool } from "../../db/require-pool.js";
-import { countsTowardStatsSql, setVolumeSql } from "../../db/sql-fragments.js";
+import {
+  containsPattern,
+  countsTowardStatsSql,
+  setVolumeSql,
+} from "../../db/sql-fragments.js";
 
 export interface TrainingHistoryListRow {
   id: string;
@@ -126,6 +130,14 @@ const BASE_LIST_SELECT = `
   ) sc ON true
 `;
 
+/** Columns of [TrainingHistoryExerciseRow] — shared by both exercise queries. */
+const SESSION_EXERCISE_COLUMNS = `
+  tse.id, tse.session_id, tse.exercise_id, tse.exercise_name, tse.exercise_muscles,
+  tse.exercise_category, tse.exercise_image_url, tse.position, tse.note,
+  tse.rest_seconds, tse.superset_group, tse.exercise_tracking_type,
+  tse.exercise_distance_unit
+`;
+
 export const trainingHistoryRepository = {
   list: async (filters: TrainingHistoryListFilters): Promise<TrainingHistoryListRow[]> => {
     const pool = requirePool();
@@ -150,7 +162,7 @@ export const trainingHistoryRepository = {
       where.push(`ts.started_at <= $${params.length}`);
     }
     if (filters.q) {
-      params.push(`%${filters.q}%`);
+      params.push(containsPattern(filters.q));
       const searchParam = `$${params.length}`;
       where.push(`(
         ts.plan_name ILIKE ${searchParam}
@@ -218,24 +230,39 @@ export const trainingHistoryRepository = {
     return (rows[0] as TrainingHistoryDetailRow | undefined) ?? null;
   },
 
+  /**
+   * Exercises of a session owned by `userId` — safe to run before (or in
+   * parallel with) the ownership check of the session itself.
+   */
+  findExercisesForUser: async (
+    userId: string,
+    sessionId: string,
+  ): Promise<TrainingHistoryExerciseRow[]> => {
+    const pool = requirePool();
+    const { rows } = await pool.query(
+      `
+      SELECT
+      ${SESSION_EXERCISE_COLUMNS}
+      FROM training_session_exercises tse
+      JOIN training_sessions ts ON ts.id = tse.session_id
+      WHERE tse.session_id = $1::uuid AND ts.user_id = $2
+      ORDER BY tse.position ASC, tse.id ASC
+      `,
+      [sessionId, userId],
+    );
+    return rows as TrainingHistoryExerciseRow[];
+  },
+
+  /**
+   * Exercises of any session — only for callers that have already checked
+   * the viewer may see it (e.g. a shared post in the feed).
+   */
   findExercises: async (sessionId: string): Promise<TrainingHistoryExerciseRow[]> => {
     const pool = requirePool();
     const { rows } = await pool.query(
       `
       SELECT
-        tse.id,
-        tse.session_id,
-        tse.exercise_id,
-        tse.exercise_name,
-        tse.exercise_muscles,
-        tse.exercise_category,
-        tse.exercise_image_url,
-        tse.position,
-        tse.note,
-        tse.rest_seconds,
-        tse.superset_group,
-        tse.exercise_tracking_type,
-        tse.exercise_distance_unit
+      ${SESSION_EXERCISE_COLUMNS}
       FROM training_session_exercises tse
       WHERE tse.session_id = $1::uuid
       ORDER BY tse.position ASC, tse.id ASC

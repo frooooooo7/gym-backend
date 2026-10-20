@@ -1,7 +1,6 @@
 import type { Request, Response } from "express";
 import { asyncHandler } from "../../common/async-handler.js";
 import type { AuthRequest } from "../../middleware/auth.js";
-import { AVATARS_PUBLIC_PREFIX } from "./profile.avatar-upload.js";
 import type {
   HandleAvailabilityQuery,
   ProfileUpdateInput,
@@ -42,12 +41,7 @@ export const profileController = {
       res.status(400).json({ error: "missing_image" });
       return;
     }
-    const publicPath = `${AVATARS_PUBLIC_PREFIX}${file.filename}`;
-    const profile = await profileService.uploadAvatar(
-      userId,
-      publicPath,
-      file.path,
-    );
+    const profile = await profileService.uploadAvatar(userId, file.buffer);
     res.status(200).json(profile);
   }),
 

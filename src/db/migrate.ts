@@ -663,6 +663,15 @@ const MIGRATIONS: Migration[] = [
         WHERE copied_from_user_id IS NOT NULL;
     `,
   },
+  {
+    // Suggested users fill the list with the newest accounts — walk an index
+    // instead of sorting the whole users table per request.
+    name: "025_users_created_at_idx",
+    sql: `
+      CREATE INDEX IF NOT EXISTS users_created_at_idx
+        ON users (created_at DESC, id DESC);
+    `,
+  },
 ];
 
 const ADVISORY_LOCK_ID = 3_742_116_919;

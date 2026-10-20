@@ -3,6 +3,7 @@ import { logger, serializeError } from "./common/logger.js";
 import { env, envWarnings, isDev } from "./config/env.js";
 import { closePool } from "./db/pool.js";
 import { runMigrations } from "./db/migrate.js";
+import { scheduleTombstoneCleanup } from "./modules/training-sessions/tombstone-cleanup.js";
 
 for (const warning of envWarnings) {
   logger.warn(`[config] ${warning}`);
@@ -28,12 +29,14 @@ const server = app.listen(env.port, () => {
     );
   }
 });
+const stopTombstoneCleanup = scheduleTombstoneCleanup();
 server.keepAliveTimeout = 65_000;
 // Musi być dłuższy niż keepAliveTimeout, inaczej proxy trafia na zamknięte gniazdo.
 server.headersTimeout = 66_000;
 
 const shutdown = async (signal: string) => {
   logger.info(`[gym-backend] ${signal}, shutting down...`);
+  stopTombstoneCleanup();
   server.close(() => {
     void closePool().then(() => process.exit(0));
   });

@@ -1,4 +1,5 @@
 import { requirePool } from "../../db/require-pool.js";
+import { containsPattern } from "../../db/sql-fragments.js";
 import type {
   ExperienceLevel,
   Gender,
@@ -309,7 +310,7 @@ export const profileRepository = {
     limit: number,
   ): Promise<FollowingUserRow[]> => {
     const pool = requirePool();
-    const pattern = `%${query.toLowerCase()}%`;
+    const pattern = containsPattern(query.toLowerCase());
     const { rows } = await pool.query(
       `SELECT u.id, u.first_name, u.last_name, u.handle, u.avatar_url,
               EXISTS (

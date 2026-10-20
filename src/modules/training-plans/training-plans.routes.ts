@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/auth.js";
-import { planCopyLimiter } from "../../middleware/rate-limit.js";
+import { planCopyLimiter, writeLimiter } from "../../middleware/rate-limit.js";
 import { validateRequest } from "../../middleware/validation.js";
 import { postParamsSchema, userPostsParamsSchema } from "../feed/feed.schemas.js";
 import { trainingPlansController } from "./training-plans.controller.js";
@@ -15,16 +15,19 @@ trainingPlansRouter.get(
 trainingPlansRouter.post(
   "/training-plans",
   requireAuth,
+  writeLimiter,
   trainingPlansController.create,
 );
 trainingPlansRouter.put(
   "/training-plans/:id",
   requireAuth,
+  writeLimiter,
   trainingPlansController.update,
 );
 trainingPlansRouter.delete(
   "/training-plans/:id",
   requireAuth,
+  writeLimiter,
   trainingPlansController.destroy,
 );
 trainingPlansRouter.post(

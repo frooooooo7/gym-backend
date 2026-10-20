@@ -81,7 +81,7 @@ const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
 const form = new FormData();
 form.append("avatar", new Blob([png], { type: "image/png" }), "me.png");
 r = await req("POST", `/profile/me/avatar`, { token: a.token, form });
-check("avatar upload", r.status === 200 && /^\/uploads\/avatars\/[0-9a-f-]+\.png$/.test(r.json.avatarUrl ?? ""), r);
+check("avatar upload (re-encoded to WebP)", r.status === 200 && /^\/uploads\/avatars\/[0-9a-f-]+\.webp$/.test(r.json.avatarUrl ?? ""), r);
 const url1 = r.json?.avatarUrl;
 if (url1) {
   const img = await fetch(BASE + url1);

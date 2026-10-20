@@ -70,14 +70,16 @@ Make a backup first if the data matters (`docker compose exec postgres pg_dump -
 
 | Variable | Default | Notes |
 | --- | --- | --- |
-| `NODE_ENV` | `development` | `production` enables strict validation, JSON logs, the CORS whitelist, HSTS and `trust proxy` (1 hop). |
+| `NODE_ENV` | `development` | `production` enables strict validation, JSON logs, the CORS whitelist and HSTS. |
 | `PORT` | `3000` | HTTP port. |
 | `DATABASE_URL` | — | **Required in production**: the process exits with a clear message without it. In development it may be empty; the API starts and `/ready` returns 503. |
-| `JWT_SECRET` | dev fallback | **Required in production**. Use ≥ 32 random chars (`openssl rand -base64 48`); shorter values log a warning. Changing it invalidates every token. |
+| `JWT_SECRET` | random per process (dev) | **Required in production and by docker compose**. Use ≥ 32 random chars (`openssl rand -base64 48`); shorter values log a warning, the placeholders from this repo are rejected in production. Without it in development every restart invalidates tokens. Changing it invalidates every token. |
+| `TRUST_PROXY` | `1` in production, else `false` | Reverse proxies in front of the API: `false`, a hop count or trusted subnets. Rate limits key by client IP — trusting a proxy that isn't there lets clients spoof `X-Forwarded-For`. |
 | `CORS_ORIGIN` | — | Production only: comma-separated browser origins. Empty in production logs a **warning** (not an error), because native mobile apps don't need CORS; browsers (Flutter web) are then blocked. Development allows every origin. |
 | `LOG_LEVEL` | `info` | `debug` \| `info` \| `warn` \| `error` \| `silent`. Tests are silent by default. |
 | `PG_POOL_MAX` | `10` | Max connections in the pg pool. |
-| `POSTGRES_PASSWORD`, `POSTGRES_PORT`, `API_PORT` | `gym`, `5432`, `3000` | docker compose only. |
+| `TOMBSTONE_RETENTION_DAYS` | `365` | Deleted-session tombstones older than this are purged daily; `0` disables the purge. |
+| `POSTGRES_PASSWORD`, `POSTGRES_PORT`, `API_PORT` | required, `5432`, `3000` | docker compose only. Ports bind to `127.0.0.1`; `POSTGRES_BIND` / `API_BIND` override it. |
 
 ## Scripts
 
@@ -142,7 +144,7 @@ Auth column: 🔒 = `Authorization: Bearer <jwt>` required.
 | PUT | `/exercises/:id` | 🔒 | Update own exercise. |
 | DELETE | `/exercises/:id` | 🔒 | Delete own exercise. |
 | POST | `/exercises/:id/favourite` | 🔒 | Toggle favourite. |
-| POST | `/exercises/:id/image` | 🔒 | Multipart field `image` (≤ 5 MB) → `imageUrl`. |
+| POST | `/exercises/:id/image` | 🔒 | Multipart field `image` (JPEG/PNG/WebP ≤ 5 MB, re-encoded to WebP ≤ 1024 px; anything else `400 invalid_file`) → `imageUrl`. |
 | GET | `/training-plans` | 🔒 | List plans. |
 | POST | `/training-plans` | 🔒 | Create (upsert by `clientId`). |
 | PUT | `/training-plans/:id` | 🔒 | Replace plan. |
@@ -162,7 +164,7 @@ Auth column: 🔒 = `Authorization: Bearer <jwt>` required.
 | PATCH | `/profile/me` | 🔒 | `firstName`, `lastName`, `bio`, `handle` and the `details` fields (see [Profile details & onboarding](#profile-details--onboarding)). |
 | GET | `/profile/handle-availability?handle=` | 🔒 | Live nickname check → `{ handle, available, reason }`; `handle` is trimmed + lowercased, `reason` is `invalid_handle`, `handle_taken` or `null`. Your own handle counts as available. 120/min per user. |
 | POST | `/profile/me/onboarding/complete` | 🔒 | Mark onboarding done (idempotent) → own profile. |
-| POST | `/profile/me/avatar` | 🔒 | Multipart field `avatar` (≤ 5 MB) → `avatarUrl`. |
+| POST | `/profile/me/avatar` | 🔒 | Multipart field `avatar` (JPEG/PNG/WebP ≤ 5 MB, re-encoded to WebP ≤ 512 px) → `avatarUrl`. |
 | DELETE | `/profile/me/avatar` | 🔒 | Remove avatar. |
 | GET / PUT / DELETE | `/profile/me/body-weight[/:date]` | 🔒 | Body weight log (see [Body weight log](#body-weight-log)). |
 | GET / PUT / DELETE | `/profile/me/body-measurements[/:date]` | 🔒 | Body measurements log (see [Body measurements log](#body-measurements-log)). |
@@ -270,8 +272,9 @@ One line per request when the response finishes (health probes excluded): method
   instance**, so effective limits multiply by the number of instances. The `token_version` cache
   has a **30 s TTL**: revocation is immediate on the instance that handled the request and takes
   up to 30 s on the others.
-- **Tombstones** (`training_session_tombstones`) are kept indefinitely so offline clients can never
-  resurrect deleted workouts. They're small, but the table only grows.
+- **Tombstones** (`training_session_tombstones`) stop offline clients from resurrecting deleted
+  workouts. A daily job removes those older than `TOMBSTONE_RETENTION_DAYS` (default 365, `0`
+  keeps them forever) — a client offline for longer could re-upload a deleted session.
 - **Graceful shutdown**: SIGTERM/SIGINT stop accepting connections, drain, close the pool (10 s
   hard limit).
 
@@ -279,7 +282,6 @@ One line per request when the response finishes (health probes excluded): method
 
 - S3-compatible object storage for uploads (stateless API instances, CDN).
 - Error tracking (Sentry) wired to the error handler and request ids.
-- Tombstone cleanup job (e.g. drop tombstones older than the longest supported offline window).
 - Shared store (Redis/Postgres) for rate limiters and the token-version cache when scaling out.
 
 ---

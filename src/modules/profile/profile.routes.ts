@@ -1,13 +1,13 @@
-import {
-  type NextFunction,
-  type Request,
-  type Response,
-  Router,
-} from "express";
+import { Router } from "express";
 import { requireAuth } from "../../middleware/auth.js";
-import { followLimiter, handleCheckLimiter } from "../../middleware/rate-limit.js";
+import {
+  followLimiter,
+  handleCheckLimiter,
+  searchLimiter,
+  writeLimiter,
+} from "../../middleware/rate-limit.js";
 import { validateRequest } from "../../middleware/validation.js";
-import { avatarUpload } from "./profile.avatar-upload.js";
+import { singleImageUpload } from "../../common/image-upload.js";
 import { profileController } from "./profile.controller.js";
 import {
   handleAvailabilityQuerySchema,
@@ -19,25 +19,12 @@ import {
 
 export const profileRouter = Router();
 
-const handleAvatarUpload = (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
-  avatarUpload.single("avatar")(req, res, (err: unknown) => {
-    if (err) {
-      res.status(400).json({ error: "invalid_file" });
-      return;
-    }
-    next();
-  });
-};
-
 profileRouter.get("/profile/me", requireAuth, profileController.getMe);
 
 profileRouter.patch(
   "/profile/me",
   requireAuth,
+  writeLimiter,
   validateRequest({ body: profileUpdateSchema }),
   profileController.updateMe,
 );
@@ -59,7 +46,8 @@ profileRouter.post(
 profileRouter.post(
   "/profile/me/avatar",
   requireAuth,
-  handleAvatarUpload,
+  writeLimiter,
+  singleImageUpload("avatar"),
   profileController.uploadAvatar,
 );
 
@@ -86,6 +74,7 @@ profileRouter.get(
 profileRouter.get(
   "/users/search",
   requireAuth,
+  searchLimiter,
   validateRequest({ query: userSearchQuerySchema }),
   profileController.searchUsers,
 );

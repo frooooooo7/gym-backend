@@ -111,7 +111,7 @@ export const trainingHistoryService = {
   getById: async (userId: string, sessionId: string) => {
     const [session, exercises] = await Promise.all([
       trainingHistoryRepository.findOneForUser(userId, sessionId),
-      trainingHistoryRepository.findExercises(sessionId),
+      trainingHistoryRepository.findExercisesForUser(userId, sessionId),
     ]);
     if (!session) {
       throw new AppError(

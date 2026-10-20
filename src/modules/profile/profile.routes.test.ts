@@ -3,6 +3,8 @@ import path from "node:path";
 import jwt from "jsonwebtoken";
 import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import sharp from "sharp";
+import { tinyImage } from "../../test/images.js";
 
 const { mockQuery, mockPool, mockGetPool } = vi.hoisted(() => {
   const mockQuery = vi.fn();
@@ -1073,7 +1075,7 @@ describe("avatar", () => {
     });
   };
 
-  it("POST /profile/me/avatar stores the file, returns profile and removes the previous avatar", async () => {
+  it("POST /profile/me/avatar stores a WebP, returns profile and removes the previous avatar", async () => {
     await listAvatarFiles();
     const previousName = `test-previous-${Date.now()}.png`;
     const previousPath = path.join(AVATARS_DIR, previousName);
@@ -1083,14 +1085,14 @@ describe("avatar", () => {
     const res = await request(app)
       .post("/profile/me/avatar")
       .set(authHeaders())
-      .attach("avatar", Buffer.from("fake png bytes"), {
+      .attach("avatar", await tinyImage("png", 900), {
         filename: "me.PNG",
         contentType: "image/png",
       });
 
     expect(res.status).toBe(200);
     expect(res.body.avatarUrl).toMatch(
-      /^\/uploads\/avatars\/[0-9a-f-]{36}\.png$/,
+      /^\/uploads\/avatars\/[0-9a-f-]{36}\.webp$/,
     );
     expect(res.body).toMatchObject({
       id: USER_ID,
@@ -1106,6 +1108,10 @@ describe("avatar", () => {
     try {
       expect(await fileExists(storedPath)).toBe(true);
       expect(await fileExists(previousPath)).toBe(false);
+      // Re-encoded and downscaled, not the uploaded bytes.
+      const meta = await sharp(await fs.readFile(storedPath)).metadata();
+      expect(meta.format).toBe("webp");
+      expect(Math.max(meta.width ?? 0, meta.height ?? 0)).toBe(512);
 
       const served = await request(app).get(res.body.avatarUrl as string);
       expect(served.status).toBe(200);
@@ -1127,7 +1133,7 @@ describe("avatar", () => {
     const res = await request(app)
       .post("/profile/me/avatar")
       .set(authHeaders())
-      .attach("avatar", Buffer.from("fake webp bytes"), {
+      .attach("avatar", await tinyImage("webp"), {
         filename: "avatar.webp",
         contentType: "application/octet-stream",
       });
@@ -1149,7 +1155,7 @@ describe("avatar", () => {
     const res = await request(app)
       .post("/profile/me/avatar")
       .set(authHeaders())
-      .attach("avatar", Buffer.from("x"), {
+      .attach("avatar", await tinyImage("jpeg"), {
         filename: "a.jpg",
         contentType: "image/jpeg",
       });
@@ -1181,6 +1187,23 @@ describe("avatar", () => {
     expect(res.status).toBe(400);
     expect(res.body.error).toBe("invalid_file");
     expect(mockQuery).not.toHaveBeenCalled();
+    expect(await listAvatarFiles()).toEqual(before);
+  });
+
+  it("POST /profile/me/avatar rejects bytes that are not an image, whatever the name says", async () => {
+    const before = await listAvatarFiles();
+
+    const res = await request(app)
+      .post("/profile/me/avatar")
+      .set(authHeaders())
+      .attach("avatar", Buffer.from("<html><script>alert(1)</script></html>"), {
+        filename: "avatar.png",
+        contentType: "image/png",
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("invalid_file");
+    expect(findCall("UPDATE users")).toBeUndefined();
     expect(await listAvatarFiles()).toEqual(before);
   });
 
@@ -1231,7 +1254,7 @@ describe("avatar", () => {
     const res = await request(app)
       .post("/profile/me/avatar")
       .set(authHeaders())
-      .attach("avatar", Buffer.from("fake image"), {
+      .attach("avatar", await tinyImage("png"), {
         filename: "avatar.png",
         contentType: "image/png",
       });

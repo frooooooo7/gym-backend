@@ -1,10 +1,13 @@
-import path from "node:path";
 
 import { AppError } from "../../common/errors.js";
-import { logger, serializeError } from "../../common/logger.js";
 import { isForeignKeyViolation, isUniqueViolation } from "../../common/pg-errors.js";
-import { diskPathFromPublicUrl, safeUnlink } from "../../common/uploads.js";
-import { AVATARS_PUBLIC_PREFIX } from "./profile.avatar-upload.js";
+import {
+  discardStoredImage,
+  removeManagedImage,
+  storeImage,
+  toWebp,
+} from "../../common/image-upload.js";
+import { AVATAR_MAX_DIMENSION, AVATARS_PUBLIC_PREFIX } from "./profile.avatar-upload.js";
 import { HANDLE_PATTERN } from "./profile.schemas.js";
 import {
   profileRepository,
@@ -68,26 +71,8 @@ const formatOwnProfile = (row: OwnProfileRow, stats: ProfileStatsRow) => ({
   },
 });
 
-/** Best-effort removal; only files we manage under /uploads/avatars/ are touched. */
-const removeManagedAvatar = async (avatarUrl: string | null): Promise<void> => {
-  if (!avatarUrl || !avatarUrl.startsWith(AVATARS_PUBLIC_PREFIX)) return;
-  const fileName = path.basename(avatarUrl);
-  try {
-    await safeUnlink(
-      diskPathFromPublicUrl(`${AVATARS_PUBLIC_PREFIX}${fileName}`),
-    );
-  } catch (e: unknown) {
-    logger.warn("[profile] failed to remove avatar file", { avatarUrl, error: serializeError(e) });
-  }
-};
-
-const removeUploadedFile = async (diskPath: string): Promise<void> => {
-  try {
-    await safeUnlink(diskPath);
-  } catch (e: unknown) {
-    logger.warn("[profile] failed to remove uploaded file", { diskPath, error: serializeError(e) });
-  }
-};
+const removeManagedAvatar = (avatarUrl: string | null) =>
+  removeManagedImage(avatarUrl, AVATARS_PUBLIC_PREFIX);
 
 const ensureUserExists = async (userId: string): Promise<void> => {
   const exists = await profileRepository.userExists(userId);
@@ -165,24 +150,22 @@ export const profileService = {
     return formatOwnProfile(row, stats);
   },
 
-  uploadAvatar: async (
-    userId: string,
-    publicPath: string,
-    savedDiskPath: string,
-  ) => {
+  uploadAvatar: async (userId: string, upload: Buffer) => {
+    const image = await toWebp(upload, AVATAR_MAX_DIMENSION);
+    const stored = await storeImage(AVATARS_PUBLIC_PREFIX, image);
     let row: Awaited<ReturnType<typeof profileRepository.updateAvatarUrl>>;
     try {
-      row = await profileRepository.updateAvatarUrl(userId, publicPath);
+      row = await profileRepository.updateAvatarUrl(userId, stored.publicPath);
     } catch (e: unknown) {
-      await removeUploadedFile(savedDiskPath);
+      await discardStoredImage(stored);
       throw e;
     }
     if (!row) {
-      await removeUploadedFile(savedDiskPath);
+      await discardStoredImage(stored);
       throw new AppError(404, "user_not_found");
     }
 
-    if (row.previous_avatar_url && row.previous_avatar_url !== publicPath) {
+    if (row.previous_avatar_url && row.previous_avatar_url !== stored.publicPath) {
       await removeManagedAvatar(row.previous_avatar_url);
     }
 

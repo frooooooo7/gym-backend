@@ -1,10 +1,11 @@
-import path from "node:path";
 import jwt from "jsonwebtoken";
 import { comparePassword, hashPassword } from "../../common/bcrypt-worker.js";
 import { AppError } from "../../common/errors.js";
-import { logger, serializeError } from "../../common/logger.js";
-import { diskPathFromPublicUrl, safeUnlink } from "../../common/uploads.js";
+import { removeManagedImage } from "../../common/image-upload.js";
+import { EXERCISE_IMAGES_PUBLIC_PREFIX } from "../exercises/exercises.image-upload.js";
+import { AVATARS_PUBLIC_PREFIX } from "../profile/profile.avatar-upload.js";
 import { env } from "../../config/env.js";
+import { JWT_ALGORITHM } from "../../middleware/auth.js";
 import type {
   ChangePasswordInput,
   DeleteAccountInput,
@@ -17,8 +18,6 @@ import { primeTokenVersion } from "./token-version.store.js";
 const SALT_ROUNDS = 12;
 const TOKEN_TTL = "30d";
 
-const AVATARS_PUBLIC_PREFIX = "/uploads/avatars/";
-const EXERCISE_IMAGES_PUBLIC_PREFIX = "/uploads/exercise-images/";
 
 export const DUMMY_HASH = await hashPassword(
   "__timing_guard_dummy__",
@@ -26,8 +25,13 @@ export const DUMMY_HASH = await hashPassword(
 );
 
 /** `tv` = users.token_version at issue time; see requireAuth. */
-const makeToken = (id: string, email: string, tokenVersion: number): string =>
-  jwt.sign({ sub: id, email, tv: tokenVersion }, env.jwtSecret, {
+/**
+ * No e-mail (or other personal data) in the claims: a JWT is only signed, not
+ * encrypted, and ends up in proxy logs and client storage.
+ */
+const makeToken = (id: string, tokenVersion: number): string =>
+  jwt.sign({ sub: id, tv: tokenVersion }, env.jwtSecret, {
+    algorithm: JWT_ALGORITHM,
     expiresIn: TOKEN_TTL,
   });
 
@@ -42,23 +46,9 @@ const formatUser = (row: UserRow) => ({
 type AuthResponse = { token: string; user: ReturnType<typeof formatUser> };
 
 const authResponse = (user: UserRow): AuthResponse => ({
-  token: makeToken(user.id, user.email, Number(user.token_version ?? 0)),
+  token: makeToken(user.id, Number(user.token_version ?? 0)),
   user: formatUser(user),
 });
-
-/** Best-effort: only files we manage under the given public prefix are touched. */
-const removeManagedUpload = async (
-  publicUrl: string | null,
-  prefix: string,
-): Promise<void> => {
-  if (!publicUrl || !publicUrl.startsWith(prefix)) return;
-  const fileName = path.basename(publicUrl);
-  try {
-    await safeUnlink(diskPathFromPublicUrl(`${prefix}${fileName}`));
-  } catch (e: unknown) {
-    logger.warn("[auth] failed to remove upload of deleted account", { publicUrl, error: serializeError(e) });
-  }
-};
 
 /** The user vanished between requireAuth and this call — same as a revoked token. */
 const tokenRevoked = () => new AppError(401, "token_revoked");
@@ -166,9 +156,9 @@ export const authService = {
     if (!files) throw tokenRevoked();
 
     await Promise.all([
-      removeManagedUpload(files.avatarUrl, AVATARS_PUBLIC_PREFIX),
+      removeManagedImage(files.avatarUrl, AVATARS_PUBLIC_PREFIX),
       ...files.exerciseImageUrls.map((url) =>
-        removeManagedUpload(url, EXERCISE_IMAGES_PUBLIC_PREFIX),
+        removeManagedImage(url, EXERCISE_IMAGES_PUBLIC_PREFIX),
       ),
     ]);
   },

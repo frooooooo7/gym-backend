@@ -98,6 +98,51 @@ export const commentLimiter = rateLimit({
   keyGenerator: userOrIpKey,
 });
 
+/** Health probes are polled constantly and must never be throttled. */
+const isProbe = (req: Request): boolean =>
+  req.path === "/health" || req.path === "/ready";
+
+/**
+ * Catch-all per IP for every API route — a ceiling against floods, not a
+ * per-feature quota (a whole gym behind one NAT stays far below it).
+ * Mounted before the routers, so it also covers unauthenticated requests.
+ */
+export const apiLimiter = rateLimit({
+  windowMs: 60 * 1_000,
+  max: 1_200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: json429,
+  skip: isProbe,
+});
+
+/**
+ * Writes that run a transaction per request (sessions with up to 2500 sets,
+ * plans, profile): 120 per authenticated user per minute. An offline client
+ * flushing its queue gets 429, which it treats as transient and retries.
+ */
+export const writeLimiter = rateLimit({
+  windowMs: 60 * 1_000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: json429,
+  keyGenerator: userOrIpKey,
+});
+
+/**
+ * 300 searches / suggestion lists per authenticated user per minute — the
+ * people search runs as the user types.
+ */
+export const searchLimiter = rateLimit({
+  windowMs: 60 * 1_000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: json429,
+  keyGenerator: userOrIpKey,
+});
+
 /** 120 nickname availability checks per authenticated user per minute (falls back to IP) */
 export const handleCheckLimiter = rateLimit({
   windowMs: 60 * 1_000,

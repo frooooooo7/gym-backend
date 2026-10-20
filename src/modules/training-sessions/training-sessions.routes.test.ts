@@ -288,6 +288,26 @@ describe("training sessions routes", () => {
       });
     });
 
+    it.each([
+      ["/uploads/exercise-images/550e8400-e29b-41d4-a716-446655440099.webp", true],
+      ["/static/exercise-images/bench-press.webp", true],
+      ["https://tracker.example/pixel.png", false],
+      ["//tracker.example/pixel.png", false],
+      ["/uploads/avatars/550e8400-e29b-41d4-a716-446655440099.webp", false],
+      ["/uploads/exercise-images/../../etc/passwd", false],
+    ])("exerciseImageUrl %j is kept only when it is our own image path (%s)", async (url, kept) => {
+      stubInserts();
+
+      const res = await request(app)
+        .post("/training-sessions")
+        .set(authHeaders())
+        .send(bodyWith({ exerciseImageUrl: url }));
+
+      expect(res.status).toBe(201);
+      // (id, clientId, sessionId, exerciseId, exerciseClientId, name, muscles, category, image, …)
+      expect(insertParams("exercises")[8]).toBe(kept ? url : null);
+    });
+
     it("treats clients that send neither field as normal sets without a note", async () => {
       stubInserts();
 

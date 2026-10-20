@@ -72,12 +72,10 @@ export const exercisesController = {
       res.status(400).json({ error: "missing_image" });
       return;
     }
-    const publicPath = `/uploads/exercise-images/${file.filename}`;
     const body = await exercisesService.uploadExerciseImage(
       userId,
       exerciseId,
-      publicPath,
-      file.path,
+      file.buffer,
     );
     res.status(200).json(body);
   }),

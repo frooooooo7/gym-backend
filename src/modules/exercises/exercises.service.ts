@@ -1,5 +1,14 @@
 import { AppError } from "../../common/errors.js";
-import { diskPathFromPublicUrl, safeUnlink } from "../../common/uploads.js";
+import {
+  discardStoredImage,
+  removeManagedImage,
+  storeImage,
+  toWebp,
+} from "../../common/image-upload.js";
+import {
+  EXERCISE_IMAGE_MAX_DIMENSION,
+  EXERCISE_IMAGES_PUBLIC_PREFIX,
+} from "./exercises.image-upload.js";
 import type { ListQueryInput, UpsertBodyInput } from "./exercises.schemas.js";
 import {
   exercisesRepository,
@@ -53,7 +62,10 @@ export type ExercisesRepositoryDeps = {
     userId: string,
     tracking?: ExerciseTrackingInput,
   ) => Promise<ExerciseRowSansFavourite | null>;
-  deleteIfOwned: (exerciseId: string, userId: string) => Promise<boolean>;
+  deleteIfOwned: (
+    exerciseId: string,
+    userId: string,
+  ) => Promise<{ imageUrl: string | null } | null>;
   exerciseVisibleToUser: (
     exerciseId: string,
     userId: string,
@@ -62,11 +74,14 @@ export type ExercisesRepositoryDeps = {
     exerciseId: string,
     userId: string,
   ) => Promise<OwnedExerciseImageMeta>;
-  updateExerciseImageUrl: (
+  replaceExerciseImageUrl: (
     exerciseId: string,
     userId: string,
     imageUrl: string,
-  ) => Promise<ExerciseRowSansFavourite | null>;
+  ) => Promise<{
+    row: ExerciseRowSansFavourite;
+    previousImageUrl: string | null;
+  } | null>;
   insertFavouriteIfAbsent: (
     userId: string,
     exerciseId: string,
@@ -123,29 +138,39 @@ export const createExercisesService = (repo: ExercisesRepositoryDeps) => ({
   uploadExerciseImage: async (
     userId: string,
     exerciseId: string,
-    publicPath: string,
-    savedDiskPath: string,
+    upload: Buffer,
   ) => {
+    // Ownership first: decoding is the expensive part and a foreign or
+    // missing exercise must not cost CPU or disk.
     const meta = await repo.getOwnedExerciseImageMeta(exerciseId, userId);
     if (!meta.owned) {
-      await safeUnlink(savedDiskPath);
       throw new AppError(404, "not_found_or_not_yours");
     }
 
-    const [row, fav] = await Promise.all([
-      repo.updateExerciseImageUrl(exerciseId, userId, publicPath),
-      repo.hasFavourite(userId, exerciseId),
-    ]);
-    if (!row) {
-      await safeUnlink(savedDiskPath);
+    const image = await toWebp(upload, EXERCISE_IMAGE_MAX_DIMENSION);
+    const stored = await storeImage(EXERCISE_IMAGES_PUBLIC_PREFIX, image);
+
+    let result: Awaited<ReturnType<typeof repo.replaceExerciseImageUrl>>;
+    let fav: boolean;
+    try {
+      [result, fav] = await Promise.all([
+        repo.replaceExerciseImageUrl(exerciseId, userId, stored.publicPath),
+        repo.hasFavourite(userId, exerciseId),
+      ]);
+    } catch (e) {
+      await discardStoredImage(stored);
+      throw e;
+    }
+    if (!result) {
+      await discardStoredImage(stored);
       throw new AppError(404, "not_found_or_not_yours");
     }
 
-    if (meta.imageUrl) {
-      await safeUnlink(diskPathFromPublicUrl(meta.imageUrl));
+    if (result.previousImageUrl !== stored.publicPath) {
+      await removeManagedImage(result.previousImageUrl, EXERCISE_IMAGES_PUBLIC_PREFIX);
     }
 
-    return formatExercise({ ...row, is_favourite: fav }, userId);
+    return formatExercise({ ...result.row, is_favourite: fav }, userId);
   },
 
   deleteIfOwned: async (userId: string, exerciseId: string) => {
@@ -153,6 +178,7 @@ export const createExercisesService = (repo: ExercisesRepositoryDeps) => ({
     if (!deleted) {
       throw new AppError(404, "not_found_or_not_yours");
     }
+    await removeManagedImage(deleted.imageUrl, EXERCISE_IMAGES_PUBLIC_PREFIX);
   },
 
   toggleFavourite: async (userId: string, exerciseId: string) => {

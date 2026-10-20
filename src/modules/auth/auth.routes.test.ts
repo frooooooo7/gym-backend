@@ -274,6 +274,22 @@ describe("login / register tokens carry tv", () => {
     });
     expect(decodeTv(res.body.token)).toBe(0);
   });
+
+  it("issued tokens are HS256 and carry no e-mail", async () => {
+    seedUser();
+    const res = await request(app).post("/auth/login").send({ email: EMAIL, password: OLD_PASSWORD });
+    const decoded = jwt.decode(res.body.token, { complete: true });
+    expect(decoded?.header.alg).toBe("HS256");
+    expect(decoded?.payload).not.toHaveProperty("email");
+  });
+
+  it("rejects a token signed with another HMAC algorithm", async () => {
+    seedUser();
+    const hs512 = jwt.sign({ sub: USER_ID, tv: 0 }, JWT_SECRET, { algorithm: "HS512", expiresIn: "1h" });
+    const res = await request(app).get("/auth/me").set(bearer(hs512));
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe("invalid_token");
+  });
 });
 
 describe("POST /auth/change-password", () => {
@@ -369,6 +385,32 @@ describe("POST /auth/change-password", () => {
       .send({ currentPassword: OLD_PASSWORD, newPassword: NEW_PASSWORD });
     expect(res.status).toBe(401);
     expect(res.body.error).toBe("invalid_credentials");
+  });
+
+  it("400 password_too_long beyond bcrypt's 72 bytes (counted in UTF-8 bytes)", async () => {
+    const longUser = "dddddddd-0000-0000-0000-000000000010";
+    seedUser({ id: longUser, email: "long@gym.com" });
+    const token = tokenFor(longUser, 0);
+    for (const body of [
+      // 73 bytes: bcrypt would silently ignore everything after byte 72.
+      { currentPassword: OLD_PASSWORD, newPassword: `A1${"x".repeat(71)}` },
+      // 38 characters but 74 bytes.
+      { currentPassword: OLD_PASSWORD, newPassword: `A1${"ż".repeat(36)}` },
+      { currentPassword: "x".repeat(1025), newPassword: NEW_PASSWORD },
+    ]) {
+      const res = await request(app)
+        .post("/auth/change-password")
+        .set(bearer(token))
+        .send(body);
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe("password_too_long");
+    }
+    // Exactly 72 bytes is still accepted.
+    const ok = await request(app)
+      .post("/auth/change-password")
+      .set(bearer(token))
+      .send({ currentPassword: OLD_PASSWORD, newPassword: `A1${"x".repeat(70)}` });
+    expect(ok.status).toBe(200);
   });
 
   it("429 too_many_requests after 10 failed attempts per user", async () => {

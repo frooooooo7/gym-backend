@@ -32,7 +32,7 @@ export const VALID_FILTERS = ["all", "mine", "favourite", "recent"] as const;
 export type ExerciseFilter = (typeof VALID_FILTERS)[number];
 
 export const listQuerySchema = z.object({
-  q: z.string().optional().default(""),
+  q: z.string().trim().max(100).optional().default(""),
   muscle: z.enum(["all", ...VALID_MUSCLES]).optional().default("all"),
   filter: z.enum(VALID_FILTERS).optional().default("all"),
   limit: z.coerce.number().int().min(1).max(100).optional().default(50),

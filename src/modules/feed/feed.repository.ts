@@ -95,6 +95,11 @@ export interface CommentRow {
   avatar_url: string | null;
 }
 
+export interface ActiveUserRow {
+  user_id: string;
+  recent_count: number;
+}
+
 export interface CommentOwnerRow {
   id: string;
   user_id: string;
@@ -573,34 +578,70 @@ export const feedRepository = {
   },
 
   /**
-   * Users the viewer does not follow (excluding self), ranked by completed
-   * shared sessions in the last 30 days, then newest accounts.
+   * The most active authors: completed shared sessions in the last 30 days,
+   * ties broken by newest account. Scans 30 days of sessions — callers cache
+   * it (see `feed.service.ts`) instead of running it for every viewer.
+   */
+  listRecentlyActiveUsers: async (limit: number): Promise<ActiveUserRow[]> => {
+    const pool = requirePool();
+    const { rows } = await pool.query(
+      `SELECT ts.user_id, COUNT(*)::int AS recent_count
+       FROM training_sessions ts
+       JOIN users u ON u.id = ts.user_id
+       WHERE ts.status = 'completed'
+         AND ts.shared_to_profile = true
+         AND ts.started_at >= now() - interval '30 days'
+       GROUP BY ts.user_id, u.created_at
+       ORDER BY recent_count DESC, u.created_at DESC, ts.user_id DESC
+       LIMIT $1`,
+      [limit],
+    );
+    return rows as ActiveUserRow[];
+  },
+
+  /**
+   * Users the viewer does not follow (excluding self): first the given
+   * active authors in their ranking order, then the newest accounts. Both
+   * branches stop after `limit` rows (the second walks
+   * `users_created_at_idx`), so the cost no longer grows with the user base.
    */
   listSuggestedUsers: async (
     viewerId: string,
+    rankedUserIds: string[],
     limit: number,
   ): Promise<FollowingUserRow[]> => {
     const pool = requirePool();
     const { rows } = await pool.query(
-      `SELECT u.id, u.first_name, u.last_name, u.handle, u.avatar_url,
-              false AS is_following
-       FROM users u
-       LEFT JOIN (
-         SELECT ts.user_id, COUNT(*)::int AS recent_count
-         FROM training_sessions ts
-         WHERE ts.status = 'completed'
-           AND ts.shared_to_profile = true
-           AND ts.started_at >= now() - interval '30 days'
-         GROUP BY ts.user_id
-       ) activity ON activity.user_id = u.id
-       WHERE u.id <> $1
-         AND NOT EXISTS (
-           SELECT 1 FROM user_follows f
-           WHERE f.follower_id = $1 AND f.following_id = u.id
-         )
-       ORDER BY COALESCE(activity.recent_count, 0) DESC, u.created_at DESC, u.id DESC
-       LIMIT $2`,
-      [viewerId, limit],
+      `SELECT id, first_name, last_name, handle, avatar_url, false AS is_following
+       FROM (
+         (SELECT u.id, u.first_name, u.last_name, u.handle, u.avatar_url,
+                 0 AS bucket, r.ord
+          FROM unnest($2::uuid[]) WITH ORDINALITY AS r(user_id, ord)
+          JOIN users u ON u.id = r.user_id
+          WHERE u.id <> $1
+            AND NOT EXISTS (
+              SELECT 1 FROM user_follows f
+              WHERE f.follower_id = $1 AND f.following_id = u.id
+            )
+          ORDER BY r.ord
+          LIMIT $3)
+         UNION ALL
+         (SELECT u.id, u.first_name, u.last_name, u.handle, u.avatar_url,
+                 1 AS bucket,
+                 row_number() OVER (ORDER BY u.created_at DESC, u.id DESC) AS ord
+          FROM users u
+          WHERE u.id <> $1
+            AND u.id <> ALL($2::uuid[])
+            AND NOT EXISTS (
+              SELECT 1 FROM user_follows f
+              WHERE f.follower_id = $1 AND f.following_id = u.id
+            )
+          ORDER BY u.created_at DESC, u.id DESC
+          LIMIT $3)
+       ) suggested
+       ORDER BY bucket, ord
+       LIMIT $3`,
+      [viewerId, rankedUserIds, limit],
     );
     return rows as FollowingUserRow[];
   },

@@ -42,3 +42,11 @@ export const sessionDurationSecSql = (alias: string): string =>
  */
 export const cursorTimestampSql = (column: string): string =>
   `to_char(${column} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
+
+/**
+ * `%value%` for LIKE / ILIKE with the user's `%`, `_` and `\` escaped (the
+ * default LIKE escape character is a backslash), so a search for "100%" or
+ * "a_b" matches literally instead of acting as a wildcard.
+ */
+export const containsPattern = (value: string): string =>
+  `%${value.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;

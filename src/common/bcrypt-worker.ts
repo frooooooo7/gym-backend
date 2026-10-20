@@ -1,3 +1,4 @@
+import { availableParallelism } from "node:os";
 import { Worker } from "node:worker_threads";
 
 type HashPayload = { type: "hash"; password: string; rounds: number };
@@ -13,9 +14,10 @@ type Pending = {
   reject: (error: Error) => void;
 };
 
-const pending = new Map<number, Pending>();
-let nextId = 1;
-let worker: Worker | null = null;
+interface PoolWorker {
+  worker: Worker;
+  pending: Map<number, Pending>;
+}
 
 const WORKER_SOURCE = `
 "use strict";
@@ -39,29 +41,52 @@ parentPort.on("message", async (msg) => {
 });
 `;
 
-const getWorker = (): Worker => {
-  if (worker) return worker;
-  const created = new Worker(WORKER_SOURCE, { eval: true });
-  created.unref();
-  created.on("message", (msg: WorkerResponse) => {
-    const task = pending.get(msg.id);
+/**
+ * bcrypt is CPU-bound (hundreds of ms per call at cost 12 in pure JS). One
+ * worker meant every login, registration and password check in the process
+ * queued on a single core, so a burst of logins from many IPs stalled them
+ * all. A small pool — one worker per core, keeping one core for the event
+ * loop, 2…4 — runs them in parallel. Workers start lazily.
+ */
+const POOL_SIZE = Math.min(4, Math.max(2, availableParallelism() - 1));
+
+const pool: (PoolWorker | null)[] = Array.from({ length: POOL_SIZE }, () => null);
+let nextId = 1;
+
+const startWorker = (slot: number): PoolWorker => {
+  const entry: PoolWorker = {
+    worker: new Worker(WORKER_SOURCE, { eval: true }),
+    pending: new Map(),
+  };
+  entry.worker.unref();
+  entry.worker.on("message", (msg: WorkerResponse) => {
+    const task = entry.pending.get(msg.id);
     if (!task) return;
-    pending.delete(msg.id);
+    entry.pending.delete(msg.id);
     if (msg.ok) task.resolve(msg.result);
     else task.reject(new Error(msg.error));
   });
-  created.on("error", (error) => {
-    worker = null;
-    for (const task of pending.values()) {
-      task.reject(error);
-    }
-    pending.clear();
-  });
-  created.on("exit", () => {
-    if (worker === created) worker = null;
-  });
-  worker = created;
-  return created;
+  const fail = (error: Error) => {
+    if (pool[slot] === entry) pool[slot] = null;
+    for (const task of entry.pending.values()) task.reject(error);
+    entry.pending.clear();
+  };
+  entry.worker.on("error", fail);
+  entry.worker.on("exit", (code) => fail(new Error(`bcrypt worker exited (${code})`)));
+  pool[slot] = entry;
+  return entry;
+};
+
+/** The least busy worker (an idle or not-yet-started slot wins). */
+const pickWorker = (): PoolWorker => {
+  let best: PoolWorker | null = null;
+  for (let slot = 0; slot < pool.length; slot++) {
+    const entry = pool[slot];
+    if (!entry) return startWorker(slot);
+    if (entry.pending.size === 0) return entry;
+    if (!best || entry.pending.size < best.pending.size) best = entry;
+  }
+  return best!;
 };
 
 const callWorker = <T extends string | boolean>(
@@ -69,11 +94,12 @@ const callWorker = <T extends string | boolean>(
 ): Promise<T> =>
   new Promise((resolve, reject) => {
     const id = nextId++;
-    pending.set(id, {
+    const entry = pickWorker();
+    entry.pending.set(id, {
       resolve: resolve as (value: string | boolean) => void,
       reject,
     });
-    getWorker().postMessage({ id, ...payload });
+    entry.worker.postMessage({ id, ...payload });
   });
 
 export const hashPassword = (

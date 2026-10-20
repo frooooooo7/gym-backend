@@ -176,11 +176,16 @@ describe("legacy deprecation headers", () => {
 });
 
 describe("rate limiter scoping", () => {
-  it("the /exercises limiter no longer adds RateLimit headers to other routes", async () => {
+  it("the /exercises limiter applies only to /exercises; other routes get the global API limit", async () => {
     const feed = await send("get", "/feed");
-    expect(feed.headers.ratelimit ?? feed.headers["ratelimit-limit"]).toBeUndefined();
+    expect(feed.headers["ratelimit-limit"]).toBe("1200");
     const exercises = await send("get", "/exercises");
-    expect(exercises.headers.ratelimit ?? exercises.headers["ratelimit-limit"]).toBeDefined();
+    expect(exercises.headers["ratelimit-limit"]).toBe("300");
+  });
+
+  it("health probes are never rate limited", async () => {
+    const res = await request(app).get("/api/v1/health");
+    expect(res.headers["ratelimit-limit"]).toBeUndefined();
   });
 });
 

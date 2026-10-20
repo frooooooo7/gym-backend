@@ -92,6 +92,29 @@ const optionalText = z
 
 const nullableUuid = postgresUuid.optional().nullable();
 
+/**
+ * Image paths this API serves itself. The session snapshot is shown to other
+ * users (`GET /posts/:id`), so a client-supplied absolute URL would make every
+ * viewer's app fetch from a third-party host (IP / reading-time tracking).
+ */
+const OWN_IMAGE_PATH =
+  /^\/(?:uploads|static)\/exercise-images\/[A-Za-z0-9][A-Za-z0-9._-]*\.(?:webp|png|jpe?g)$/;
+
+/**
+ * Anything else becomes `null` rather than a 400: an offline client may have
+ * queued sessions with older values, and a missing thumbnail must not block
+ * the workout from syncing.
+ */
+const exerciseImagePath = z
+  .string()
+  .max(2000)
+  .optional()
+  .nullable()
+  .transform((value) => {
+    const trimmed = value?.trim() ?? "";
+    return OWN_IMAGE_PATH.test(trimmed) ? trimmed : null;
+  });
+
 export const SET_TYPES = ["normal", "warmup", "failure", "drop"] as const;
 
 const exerciseNote = z
@@ -132,7 +155,7 @@ const sessionExerciseSchema = z.object({
   exerciseName: z.string().trim().min(1, "missing_exercise_name").max(200),
   exerciseMuscles: z.array(z.string().max(80)).max(20).default([]),
   exerciseCategory: z.string().trim().min(1).max(80),
-  exerciseImageUrl: z.string().max(2000).optional().nullable(),
+  exerciseImageUrl: exerciseImagePath,
   note: exerciseNote,
   position: z.number().int().min(0).optional(),
   restSeconds: restSeconds,

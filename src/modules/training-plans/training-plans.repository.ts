@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { AppError } from "../../common/errors.js";
 import { requirePool } from "../../db/require-pool.js";
+import { rollbackQuietly } from "../../db/transaction.js";
 import type { TrainingPlanBodyInput } from "./training-plans.schemas.js";
 
 export interface TrainingPlanSetRow {
@@ -379,6 +380,7 @@ export const trainingPlansRepository = {
   ): Promise<{ row: TrainingPlanRow; created: boolean }> => {
     const pool = requirePool();
     const client = await pool.connect();
+    let releaseError: Error | undefined;
     try {
       await client.query("BEGIN");
       await assertExercisesVisible(client, userId, body);
@@ -450,10 +452,10 @@ export const trainingPlansRepository = {
       await client.query("COMMIT");
       return { row, created };
     } catch (e) {
-      await client.query("ROLLBACK");
+      releaseError = await rollbackQuietly(client);
       throw e;
     } finally {
-      client.release();
+      client.release(releaseError);
     }
   },
 
@@ -464,6 +466,7 @@ export const trainingPlansRepository = {
   ): Promise<TrainingPlanRow | null> => {
     const pool = requirePool();
     const client = await pool.connect();
+    let releaseError: Error | undefined;
     try {
       await client.query("BEGIN");
       await assertExercisesVisible(client, userId, body);
@@ -494,10 +497,10 @@ export const trainingPlansRepository = {
       await client.query("COMMIT");
       return row;
     } catch (e) {
-      await client.query("ROLLBACK");
+      releaseError = await rollbackQuietly(client);
       throw e;
     } finally {
-      client.release();
+      client.release(releaseError);
     }
   },
 

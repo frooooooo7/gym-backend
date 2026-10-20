@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { AppError } from "../../common/errors.js";
 import { requirePool } from "../../db/require-pool.js";
+import { rollbackQuietly } from "../../db/transaction.js";
 import type { TrainingSessionBodyInput } from "./training-sessions.schemas.js";
 
 export interface TrainingSessionHistoryFilters {
@@ -398,6 +399,7 @@ export const trainingSessionsRepository = {
   ): Promise<{ row: TrainingSessionRow; created: boolean }> => {
     const pool = requirePool();
     const client = await pool.connect();
+    let releaseError: Error | undefined;
     try {
       await client.query("BEGIN");
       await lockClientId(client, userId, body.clientId);
@@ -449,12 +451,12 @@ export const trainingSessionsRepository = {
       await client.query("COMMIT");
       return { row, created: rows[0].inserted as boolean };
     } catch (e) {
-      await client.query("ROLLBACK");
+      releaseError = await rollbackQuietly(client);
       if (isUniqueViolation(e))
         throw new AppError(409, "active_session_exists");
       throw e;
     } finally {
-      client.release();
+      client.release(releaseError);
     }
   },
 
@@ -465,6 +467,7 @@ export const trainingSessionsRepository = {
   ): Promise<TrainingSessionRow | null> => {
     const pool = requirePool();
     const client = await pool.connect();
+    let releaseError: Error | undefined;
     try {
       await client.query("BEGIN");
       if (
@@ -514,12 +517,12 @@ export const trainingSessionsRepository = {
       await client.query("COMMIT");
       return row ?? null;
     } catch (e) {
-      await client.query("ROLLBACK");
+      releaseError = await rollbackQuietly(client);
       if (isUniqueViolation(e))
         throw new AppError(409, "active_session_exists");
       throw e;
     } finally {
-      client.release();
+      client.release(releaseError);
     }
   },
 
@@ -546,6 +549,7 @@ export const trainingSessionsRepository = {
   ): Promise<TrainingSessionRow | null> => {
     const pool = requirePool();
     const client = await pool.connect();
+    let releaseError: Error | undefined;
     try {
       await client.query("BEGIN");
       const { rowCount } = await client.query(
@@ -566,10 +570,10 @@ export const trainingSessionsRepository = {
       await client.query("COMMIT");
       return row ?? null;
     } catch (e) {
-      await client.query("ROLLBACK");
+      releaseError = await rollbackQuietly(client);
       throw e;
     } finally {
-      client.release();
+      client.release(releaseError);
     }
   },
 
@@ -583,6 +587,7 @@ export const trainingSessionsRepository = {
   ): Promise<DeleteSessionResult> => {
     const pool = requirePool();
     const client = await pool.connect();
+    let releaseError: Error | undefined;
     try {
       await client.query("BEGIN");
       const { rows: found } = await client.query(
@@ -616,10 +621,10 @@ export const trainingSessionsRepository = {
       await client.query("COMMIT");
       return "deleted";
     } catch (e) {
-      await client.query("ROLLBACK");
+      releaseError = await rollbackQuietly(client);
       throw e;
     } finally {
-      client.release();
+      client.release(releaseError);
     }
   },
 
@@ -631,6 +636,7 @@ export const trainingSessionsRepository = {
   removeByClientId: async (userId: string, clientId: string): Promise<void> => {
     const pool = requirePool();
     const client = await pool.connect();
+    let releaseError: Error | undefined;
     try {
       await client.query("BEGIN");
       await lockClientId(client, userId, clientId);
@@ -650,10 +656,10 @@ export const trainingSessionsRepository = {
       );
       await client.query("COMMIT");
     } catch (e) {
-      await client.query("ROLLBACK");
+      releaseError = await rollbackQuietly(client);
       throw e;
     } finally {
-      client.release();
+      client.release(releaseError);
     }
   },
 

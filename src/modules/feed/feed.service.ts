@@ -23,6 +23,41 @@ import { commentCursor, feedCursor, type KeysetCursor } from "./feed.schemas.js"
 const RECENT_KUDOS_LIMIT = 3;
 const TOP_EXERCISES_LIMIT = 3;
 
+/** How many top authors the shared ranking keeps, and for how long. */
+const ACTIVE_RANKING_SIZE = 200;
+const ACTIVE_RANKING_TTL_MS = 5 * 60_000;
+
+let activeRanking: { userIds: string[]; expiresAt: number } | null = null;
+let activeRankingLoad: Promise<string[]> | null = null;
+
+/**
+ * Who has been active lately is the same for every viewer — computing it
+ * once per {@link ACTIVE_RANKING_TTL_MS} instead of on every feed open keeps
+ * `GET /users/suggested` independent of the number of users and sessions.
+ * Concurrent misses share one query.
+ */
+const recentlyActiveUserIds = async (): Promise<string[]> => {
+  if (activeRanking && activeRanking.expiresAt > Date.now()) {
+    return activeRanking.userIds;
+  }
+  activeRankingLoad ??= feedRepository
+    .listRecentlyActiveUsers(ACTIVE_RANKING_SIZE)
+    .then((rows) => {
+      const userIds = rows.map((row) => row.user_id);
+      activeRanking = { userIds, expiresAt: Date.now() + ACTIVE_RANKING_TTL_MS };
+      return userIds;
+    })
+    .finally(() => {
+      activeRankingLoad = null;
+    });
+  return activeRankingLoad;
+};
+
+/** Test helper. */
+export const clearActiveUsersRanking = (): void => {
+  activeRanking = null;
+};
+
 const formatUserMini = (row: UserMiniRow) => ({
   id: row.id,
   firstName: row.first_name,
@@ -377,7 +412,8 @@ export const feedService = {
   },
 
   getSuggestedUsers: async (viewerId: string, limit: number) => {
-    const rows = await feedRepository.listSuggestedUsers(viewerId, limit);
+    const ranked = await recentlyActiveUserIds();
+    const rows = await feedRepository.listSuggestedUsers(viewerId, ranked, limit);
     return rows.map(formatFollowingUser);
   },
 };

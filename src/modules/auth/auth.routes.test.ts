@@ -39,6 +39,7 @@ const NEW_PASSWORD = "NewPassw0rd";
 const OLD_HASH = bcrypt.hashSync(OLD_PASSWORD, 4);
 
 const app = createApp();
+const CREATED_AT = "2026-01-15T10:00:00.000Z";
 
 // ---- tiny in-memory "users" table behind the mocked pool ----
 interface FakeUser {
@@ -48,6 +49,7 @@ interface FakeUser {
   last_name: string;
   onboarding_completed: boolean;
   token_version: number;
+  created_at: string;
   password_hash: string;
   avatar_url: string | null;
 }
@@ -63,6 +65,7 @@ const publicCols = (u: FakeUser) => ({
   last_name: u.last_name,
   onboarding_completed: u.onboarding_completed,
   token_version: u.token_version,
+  created_at: u.created_at,
 });
 
 const result = (rows: unknown[]) => Promise.resolve({ rows, rowCount: rows.length });
@@ -95,6 +98,7 @@ const fakeDb = (sql: string, params: unknown[] = []) => {
       last_name: params[3] as string,
       onboarding_completed: false,
       token_version: 0,
+      created_at: CREATED_AT,
       avatar_url: null,
     };
     users.set(created.id, created);
@@ -132,6 +136,7 @@ const seedUser = (overrides: Partial<FakeUser> = {}): FakeUser => {
     last_name: "Kowalski",
     onboarding_completed: true,
     token_version: 0,
+    created_at: CREATED_AT,
     password_hash: OLD_HASH,
     avatar_url: null,
     ...overrides,
@@ -197,7 +202,7 @@ describe("requireAuth token revocation", () => {
     seedUser();
     const res = await request(app).get("/auth/me").set(bearer(tokenFor(USER_ID)));
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ id: USER_ID, email: EMAIL, firstName: "Jan", lastName: "Kowalski", onboardingCompleted: true });
+    expect(res.body).toEqual({ id: USER_ID, email: EMAIL, firstName: "Jan", lastName: "Kowalski", onboardingCompleted: true, createdAt: CREATED_AT });
   });
 
   it("rejects a legacy token without tv once token_version > 0", async () => {
@@ -255,7 +260,7 @@ describe("login / register tokens carry tv", () => {
     const res = await request(app).post("/auth/login").send({ email: EMAIL, password: OLD_PASSWORD });
     expect(res.status).toBe(200);
     expect(Object.keys(res.body).sort()).toEqual(["token", "user"]);
-    expect(res.body.user).toEqual({ id: USER_ID, email: EMAIL, firstName: "Jan", lastName: "Kowalski", onboardingCompleted: true });
+    expect(res.body.user).toEqual({ id: USER_ID, email: EMAIL, firstName: "Jan", lastName: "Kowalski", onboardingCompleted: true, createdAt: CREATED_AT });
     expect(decodeTv(res.body.token)).toBe(3);
     const me = await request(app).get("/auth/me").set(bearer(res.body.token));
     expect(me.status).toBe(200);
@@ -294,7 +299,7 @@ describe("POST /auth/change-password", () => {
       .set(bearer(oldToken))
       .send({ currentPassword: OLD_PASSWORD, newPassword: NEW_PASSWORD });
     expect(res.status).toBe(200);
-    expect(res.body.user).toEqual({ id: USER_ID, email: EMAIL, firstName: "Jan", lastName: "Kowalski", onboardingCompleted: true });
+    expect(res.body.user).toEqual({ id: USER_ID, email: EMAIL, firstName: "Jan", lastName: "Kowalski", onboardingCompleted: true, createdAt: CREATED_AT });
     expect(decodeTv(res.body.token)).toBe(1);
     expect(bcrypt.compareSync(NEW_PASSWORD, users.get(USER_ID)!.password_hash)).toBe(true);
 
@@ -410,7 +415,7 @@ describe("POST /auth/logout-all", () => {
     const oldToken = tokenFor(USER_ID, 4);
     const res = await request(app).post("/auth/logout-all").set(bearer(oldToken));
     expect(res.status).toBe(200);
-    expect(res.body.user).toEqual({ id: USER_ID, email: EMAIL, firstName: "Jan", lastName: "Kowalski", onboardingCompleted: true });
+    expect(res.body.user).toEqual({ id: USER_ID, email: EMAIL, firstName: "Jan", lastName: "Kowalski", onboardingCompleted: true, createdAt: CREATED_AT });
     expect(decodeTv(res.body.token)).toBe(5);
     expect(users.get(USER_ID)!.token_version).toBe(5);
 

@@ -8,6 +8,7 @@ export interface UserRow {
   last_name: string;
   onboarding_completed: boolean;
   token_version: number;
+  created_at: Date | string;
 }
 
 export interface UserWithPasswordRow extends UserRow {
@@ -21,7 +22,7 @@ export interface DeletedAccountFiles {
 }
 
 const USER_COLUMNS =
-  "id, email, first_name, last_name, (onboarding_completed_at IS NOT NULL) AS onboarding_completed, token_version";
+  "id, email, first_name, last_name, (onboarding_completed_at IS NOT NULL) AS onboarding_completed, created_at, token_version";
 
 export const authRepository = {
   createUser: async (

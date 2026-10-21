@@ -41,6 +41,8 @@ const formatUser = (row: UserRow) => ({
   firstName: row.first_name,
   lastName: row.last_name,
   onboardingCompleted: row.onboarding_completed === true,
+  /** Start of the PRO trial window; the app derives the trial from it. */
+  createdAt: new Date(row.created_at).toISOString(),
 });
 
 type AuthResponse = { token: string; user: ReturnType<typeof formatUser> };

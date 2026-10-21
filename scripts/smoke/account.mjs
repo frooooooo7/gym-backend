@@ -121,7 +121,7 @@ r = await login(a.email, PASSWORD);
 check("login token has tv 0", r.status === 200 && tv(r.json.token) === 0 && Object.keys(r.json).sort().join() === "token,user", r);
 const aLogin2 = r.json.token;
 r = await req("GET", "/auth/me", { token: a.token });
-check("GET /auth/me unchanged shape", r.status === 200 && Object.keys(r.json).sort().join() === "email,firstName,id,lastName,onboardingCompleted", r);
+check("GET /auth/me unchanged shape", r.status === 200 && Object.keys(r.json).sort().join() === "createdAt,email,firstName,id,lastName,onboardingCompleted", r);
 
 r = await req("POST", "/auth/change-password", { body: { currentPassword: PASSWORD, newPassword: NEW_PASSWORD } });
 check("change-password 401 unauthorized without token", r.status === 401 && r.json.error === "unauthorized", r);
@@ -144,7 +144,7 @@ check("change-password same 400 password_unchanged", r.status === 400 && r.json.
 check("failed attempts did not bump version", await sql(`SELECT token_version FROM users WHERE id='${a.id}'`) === "0");
 
 r = await req("POST", "/auth/change-password", { token: a.token, body: { currentPassword: PASSWORD, newPassword: NEW_PASSWORD } });
-check("change-password 200 {token,user}", r.status === 200 && Object.keys(r.json).sort().join() === "token,user" && r.json.user.id === a.id && r.json.user.email === a.email && Object.keys(r.json.user).sort().join() === "email,firstName,id,lastName,onboardingCompleted", r);
+check("change-password 200 {token,user}", r.status === 200 && Object.keys(r.json).sort().join() === "token,user" && r.json.user.id === a.id && r.json.user.email === a.email && Object.keys(r.json.user).sort().join() === "createdAt,email,firstName,id,lastName,onboardingCompleted", r);
 const aChanged = r.json.token;
 check("new token has tv 1", tv(aChanged) === 1);
 check("DB token_version = 1", await sql(`SELECT token_version FROM users WHERE id='${a.id}'`) === "1");

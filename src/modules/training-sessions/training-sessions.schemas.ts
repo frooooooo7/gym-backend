@@ -166,6 +166,27 @@ const sessionExerciseSchema = z.object({
   sets: z.array(sessionSetSchema).min(1, "missing_sets").max(50),
 });
 
+/**
+ * Post title: trimmed, 1–80 code points (Postgres char_length); blank or
+ * null clears it. Left out (`undefined`) keeps the stored title, so older
+ * app versions that don't know the field never wipe it.
+ */
+const postTitle = z
+  .string({ error: "invalid_post_title" })
+  .max(400, "invalid_post_title")
+  .nullable()
+  .optional()
+  .transform((value, ctx) => {
+    if (value === undefined) return undefined;
+    const trimmed = value?.trim() ?? "";
+    if (trimmed.length === 0) return null;
+    if (Array.from(trimmed).length > 80) {
+      ctx.addIssue({ code: "custom", message: "invalid_post_title" });
+      return z.NEVER;
+    }
+    return trimmed;
+  });
+
 export const trainingSessionBodySchema = z
   .object({
     clientId: postgresUuid,
@@ -179,6 +200,7 @@ export const trainingSessionBodySchema = z
     startedAt: requiredDate,
     finishedAt: optionalDate,
     sharedToProfile: z.boolean().optional().default(false),
+    postTitle,
     exercises: z
       .array(sessionExerciseSchema)
       .min(1, "missing_exercises")
@@ -205,8 +227,20 @@ export type TrainingSessionBodyInput = z.infer<
   typeof trainingSessionBodySchema
 >;
 
+/** `postTitle` / `note` left out keep their stored values. */
 export const sharedToProfileBodySchema = z.object({
   sharedToProfile: z.boolean(),
+  postTitle,
+  note: z
+    .string()
+    .max(2000)
+    .nullable()
+    .optional()
+    .transform((value) => {
+      if (value === undefined) return undefined;
+      const trimmed = value?.trim() ?? "";
+      return trimmed.length > 0 ? trimmed : null;
+    }),
 });
 
 export type SharedToProfileBodyInput = z.infer<

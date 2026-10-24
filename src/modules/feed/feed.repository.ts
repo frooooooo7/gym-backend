@@ -23,6 +23,8 @@ export interface PostRow {
   user_id: string;
   plan_name: string;
   note: string | null;
+  post_title: string | null;
+  post_photo_url: string | null;
   started_at: Date;
   finished_at: Date | null;
   duration_sec: number;
@@ -111,6 +113,8 @@ const POST_SELECT = `
     ts.user_id,
     ts.plan_name,
     ts.note,
+    ts.post_title,
+    ts.post_photo_url,
     ts.started_at,
     ts.finished_at,
     ${sessionDurationSecSql("ts")} AS duration_sec,

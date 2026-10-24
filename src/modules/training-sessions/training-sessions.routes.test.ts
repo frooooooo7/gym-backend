@@ -1,6 +1,10 @@
+import fs from "node:fs/promises";
+import path from "node:path";
 import jwt from "jsonwebtoken";
+import sharp from "sharp";
 import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { tinyImage } from "../../test/images.js";
 
 const { mockQuery, mockRelease, mockConnect, mockPool, mockGetPool } =
   vi.hoisted(() => {
@@ -86,6 +90,8 @@ const sessionRow = {
   started_at: new Date(validBody.startedAt),
   finished_at: new Date(validBody.finishedAt),
   shared_to_profile: true,
+  post_title: null,
+  post_photo_url: null,
   created_at: new Date("2026-05-12T10:00:00Z"),
   updated_at: new Date("2026-05-12T11:00:00Z"),
 };
@@ -235,8 +241,10 @@ describe("training sessions routes", () => {
     const insertCall = mockQuery.mock.calls.find((call) =>
       String(call[0]).includes("INSERT INTO training_sessions"),
     );
-    // shared_to_profile, then plan_color_key and plan_icon_key
-    expect(insertCall?.[1]?.at(-3)).toBe(false);
+    // shared_to_profile, then plan_color_key, plan_icon_key, post_title and
+    // the "postTitle was sent" flag
+    expect(insertCall?.[1]?.at(-5)).toBe(false);
+    expect(insertCall?.[1]?.slice(-2)).toEqual([null, false]);
     expect(res.body.sharedToProfile).toBe(false);
   });
 
@@ -349,7 +357,7 @@ describe("training sessions routes", () => {
       const sessionInsert = mockQuery.mock.calls.find((call) =>
         String(call[0]).includes("INSERT INTO training_sessions"),
       )?.[1] as unknown[];
-      expect(sessionInsert.slice(-2)).toEqual(["sky", "bolt"]);
+      expect(sessionInsert.slice(-4, -2)).toEqual(["sky", "bolt"]);
       expect(res.body).toMatchObject({ planColorKey: "sky", planIconKey: "bolt" });
       expect(res.body.exercises[0]).toMatchObject({ restSeconds: 90, supersetGroup: "B" });
     });
@@ -608,7 +616,16 @@ describe("training sessions routes", () => {
     const updateCall = mockQuery.mock.calls.find((call) =>
       String(call[0]).includes("SET shared_to_profile = $1"),
     );
-    expect(updateCall?.[1]).toEqual([true, SESSION_ID, USER_ID]);
+    // postTitle and note left out → both "keep" flags are false
+    expect(updateCall?.[1]).toEqual([
+      true,
+      SESSION_ID,
+      USER_ID,
+      null,
+      false,
+      null,
+      false,
+    ]);
   });
 
   it("PATCH /training-sessions/:id/shared-to-profile returns 404 when missing", async () => {
@@ -625,6 +642,243 @@ describe("training sessions routes", () => {
     expect(res.body).toMatchObject({ error: "not_found_or_not_yours" });
   });
 
+  it("PATCH /training-sessions/:id/shared-to-profile saves the post title and body", async () => {
+    whenSqlContains({
+      "SET shared_to_profile = $1": { rowCount: 1 },
+      "FROM training_sessions": {
+        rows: [
+          {
+            ...sessionRow,
+            post_title: "Nowy rekord",
+            note: "W końcu 120 kg",
+          },
+        ],
+      },
+    });
+
+    const res = await request(app)
+      .patch(`/training-sessions/${SESSION_ID}/shared-to-profile`)
+      .set(authHeaders())
+      .send({
+        sharedToProfile: true,
+        postTitle: "  Nowy rekord  ",
+        note: "W końcu 120 kg",
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      postTitle: "Nowy rekord",
+      note: "W końcu 120 kg",
+      postPhotoUrl: null,
+    });
+    const updateCall = mockQuery.mock.calls.find((call) =>
+      String(call[0]).includes("SET shared_to_profile = $1"),
+    );
+    expect(updateCall?.[1]).toEqual([
+      true,
+      SESSION_ID,
+      USER_ID,
+      "Nowy rekord",
+      true,
+      "W końcu 120 kg",
+      true,
+    ]);
+  });
+
+  it("PATCH /training-sessions/:id/shared-to-profile clears a blank title", async () => {
+    whenSqlContains({
+      "SET shared_to_profile = $1": { rowCount: 1 },
+      "FROM training_sessions": { rows: [sessionRow] },
+    });
+
+    const res = await request(app)
+      .patch(`/training-sessions/${SESSION_ID}/shared-to-profile`)
+      .set(authHeaders())
+      .send({ sharedToProfile: true, postTitle: "   " });
+
+    expect(res.status).toBe(200);
+    const updateCall = mockQuery.mock.calls.find((call) =>
+      String(call[0]).includes("SET shared_to_profile = $1"),
+    );
+    expect(updateCall?.[1]?.slice(3, 5)).toEqual([null, true]);
+  });
+
+  it("rejects a post title longer than 80 characters", async () => {
+    const res = await request(app)
+      .patch(`/training-sessions/${SESSION_ID}/shared-to-profile`)
+      .set(authHeaders())
+      .send({ sharedToProfile: true, postTitle: "ą".repeat(81) });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ error: "invalid_post_title" });
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("PUT /training-sessions/:id writes postTitle only when it is sent", async () => {
+    whenSqlContains({
+      "UPDATE training_sessions": { rowCount: 1 },
+      "INSERT INTO training_session_exercises": {
+        rows: [{ id: SESSION_EXERCISE_ID }],
+      },
+      "FROM training_sessions": {
+        rows: [{ ...sessionRow, post_title: "Mój tytuł" }],
+      },
+    });
+
+    const res = await request(app)
+      .put(`/training-sessions/${SESSION_ID}`)
+      .set(authHeaders())
+      .send({ ...validBody, postTitle: "Mój tytuł" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.postTitle).toBe("Mój tytuł");
+    const updateCall = mockQuery.mock.calls.find((call) =>
+      String(call[0]).includes("UPDATE training_sessions"),
+    );
+    expect(String(updateCall?.[0])).toContain(
+      "post_title = CASE WHEN $14::boolean THEN $13 ELSE post_title END",
+    );
+    expect(updateCall?.[1]?.slice(-2)).toEqual(["Mój tytuł", true]);
+  });
+
+  describe("post photo", () => {
+    const POST_PHOTOS_DIR = path.join(process.cwd(), "uploads", "post-photos");
+
+    const fileExists = async (p: string) =>
+      fs.access(p).then(
+        () => true,
+        () => false,
+      );
+
+    /** Echo the new post_photo_url back like Postgres would. */
+    const mockPhotoUpdate = (previousUrl: string | null, found = true) => {
+      let stored: string | null = null;
+      mockQuery.mockImplementation((sql: string, params?: unknown[]) => {
+        const text = String(sql);
+        if (text.includes("SELECT post_photo_url FROM training_sessions")) {
+          return Promise.resolve({
+            rows: found ? [{ post_photo_url: previousUrl }] : [],
+            rowCount: found ? 1 : 0,
+          });
+        }
+        if (text.includes("SET post_photo_url = $1")) {
+          stored = (params?.[0] as string | null) ?? null;
+          return Promise.resolve({ rows: [], rowCount: 1 });
+        }
+        if (text.includes("FROM training_sessions")) {
+          return Promise.resolve({
+            rows: [{ ...sessionRow, post_photo_url: stored }],
+            rowCount: 1,
+          });
+        }
+        return Promise.resolve({ rows: [], rowCount: 0 });
+      });
+    };
+
+    it("POST stores a downscaled WebP and removes the previous photo", async () => {
+      await fs.mkdir(POST_PHOTOS_DIR, { recursive: true });
+      const previousName = `test-previous-${Date.now()}.webp`;
+      const previousPath = path.join(POST_PHOTOS_DIR, previousName);
+      await fs.writeFile(previousPath, "old");
+      mockPhotoUpdate(`/uploads/post-photos/${previousName}`);
+
+      const res = await request(app)
+        .post(`/training-sessions/${SESSION_ID}/post-photo`)
+        .set(authHeaders())
+        .attach("photo", await tinyImage("jpeg", 2400), {
+          filename: "gym.jpg",
+          contentType: "image/jpeg",
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.postPhotoUrl).toMatch(
+        /^\/uploads\/post-photos\/[0-9a-f-]{36}\.webp$/,
+      );
+      const storedPath = path.join(
+        POST_PHOTOS_DIR,
+        path.basename(res.body.postPhotoUrl as string),
+      );
+      try {
+        expect(await fileExists(storedPath)).toBe(true);
+        expect(await fileExists(previousPath)).toBe(false);
+        const meta = await sharp(await fs.readFile(storedPath)).metadata();
+        expect(meta.format).toBe("webp");
+        expect(Math.max(meta.width ?? 0, meta.height ?? 0)).toBe(1600);
+
+        const served = await request(app).get(res.body.postPhotoUrl as string);
+        expect(served.status).toBe(200);
+      } finally {
+        await fs.rm(storedPath, { force: true });
+        await fs.rm(previousPath, { force: true });
+      }
+    });
+
+    it("POST returns 404 and keeps nothing on disk for someone else's session", async () => {
+      await fs.mkdir(POST_PHOTOS_DIR, { recursive: true });
+      const before = new Set(await fs.readdir(POST_PHOTOS_DIR));
+      mockPhotoUpdate(null, false);
+
+      const res = await request(app)
+        .post(`/training-sessions/${SESSION_ID}/post-photo`)
+        .set(authHeaders())
+        .attach("photo", await tinyImage("png", 64), {
+          filename: "gym.png",
+          contentType: "image/png",
+        });
+
+      expect(res.status).toBe(404);
+      const after = await fs.readdir(POST_PHOTOS_DIR);
+      expect(after.filter((name) => !before.has(name))).toEqual([]);
+    });
+
+    it("POST rejects a request without a file", async () => {
+      const res = await request(app)
+        .post(`/training-sessions/${SESSION_ID}/post-photo`)
+        .set(authHeaders());
+
+      expect(res.status).toBe(400);
+      expect(res.body).toMatchObject({ error: "missing_image" });
+    });
+
+    it("DELETE clears the photo and removes the file", async () => {
+      await fs.mkdir(POST_PHOTOS_DIR, { recursive: true });
+      const name = `test-delete-${Date.now()}.webp`;
+      const filePath = path.join(POST_PHOTOS_DIR, name);
+      await fs.writeFile(filePath, "x");
+      mockPhotoUpdate(`/uploads/post-photos/${name}`);
+
+      const res = await request(app)
+        .delete(`/training-sessions/${SESSION_ID}/post-photo`)
+        .set(authHeaders());
+
+      expect(res.status).toBe(200);
+      expect(res.body.postPhotoUrl).toBeNull();
+      expect(await fileExists(filePath)).toBe(false);
+    });
+
+    it("DELETE /training-sessions/:id also removes the post photo", async () => {
+      await fs.mkdir(POST_PHOTOS_DIR, { recursive: true });
+      const name = `test-session-${Date.now()}.webp`;
+      const filePath = path.join(POST_PHOTOS_DIR, name);
+      await fs.writeFile(filePath, "x");
+      whenSqlContains({
+        "SELECT client_id, post_photo_url FROM training_sessions": {
+          rows: [{ client_id: CLIENT_ID, post_photo_url: `/uploads/post-photos/${name}` }],
+        },
+        "DELETE FROM training_sessions": {
+          rows: [{ post_photo_url: `/uploads/post-photos/${name}` }],
+        },
+      });
+
+      const res = await request(app)
+        .delete(`/training-sessions/${SESSION_ID}`)
+        .set(authHeaders());
+
+      expect(res.status).toBe(204);
+      expect(await fileExists(filePath)).toBe(false);
+    });
+  });
+
   const TOMBSTONE_SQL = "FROM training_session_tombstones";
   const OTHER_CLIENT_ID = "550e8400-e29b-41d4-a716-446655440099";
 
@@ -637,10 +891,10 @@ describe("training sessions routes", () => {
 
   it("DELETE /training-sessions/:id deletes the session and leaves a tombstone in one transaction", async () => {
     whenSqlContains({
-      "SELECT client_id FROM training_sessions": {
+      "SELECT client_id, post_photo_url FROM training_sessions": {
         rows: [{ client_id: CLIENT_ID }],
       },
-      "DELETE FROM training_sessions": { rowCount: 1 },
+      "DELETE FROM training_sessions": { rows: [{ post_photo_url: null }] },
       "INSERT INTO training_session_tombstones": { rowCount: 1 },
     });
 
@@ -679,7 +933,7 @@ describe("training sessions routes", () => {
 
   it("DELETE /training-sessions/:id is idempotent when the user already deleted it", async () => {
     whenSqlContains({
-      "SELECT client_id FROM training_sessions": { rows: [] },
+      "SELECT client_id, post_photo_url FROM training_sessions": { rows: [] },
       [TOMBSTONE_SQL]: { rows: [{ "?column?": 1 }] },
     });
 
@@ -701,7 +955,7 @@ describe("training sessions routes", () => {
 
   it("DELETE /training-sessions/:id returns 404 when not the user's and not tombstoned", async () => {
     whenSqlContains({
-      "SELECT client_id FROM training_sessions": { rows: [] },
+      "SELECT client_id, post_photo_url FROM training_sessions": { rows: [] },
       [TOMBSTONE_SQL]: { rows: [] },
     });
 
@@ -939,6 +1193,8 @@ describe("training sessions routes", () => {
       USER_ID,
       null,
       null,
+      null,
+      false,
     ]);
     expect(calls.at(-1)).toBe("COMMIT");
   });

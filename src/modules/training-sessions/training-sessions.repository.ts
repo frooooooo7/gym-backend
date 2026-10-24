@@ -3,7 +3,10 @@ import type { PoolClient } from "pg";
 import { AppError } from "../../common/errors.js";
 import { requirePool } from "../../db/require-pool.js";
 import { rollbackQuietly } from "../../db/transaction.js";
-import type { TrainingSessionBodyInput } from "./training-sessions.schemas.js";
+import type {
+  SharedToProfileBodyInput,
+  TrainingSessionBodyInput,
+} from "./training-sessions.schemas.js";
 
 export interface TrainingSessionHistoryFilters {
   limit: number;
@@ -66,6 +69,8 @@ export interface TrainingSessionRow {
   started_at: Date;
   finished_at: Date | null;
   shared_to_profile: boolean;
+  post_title: string | null;
+  post_photo_url: string | null;
   created_at: Date;
   updated_at: Date;
   exercises: TrainingSessionExerciseRow[];
@@ -299,7 +304,11 @@ export interface TrainingSessionTombstoneRow {
   deleted_at: Date;
 }
 
-export type DeleteSessionResult = "deleted" | "already_deleted" | "not_found";
+export type DeleteSessionResult = {
+  status: "deleted" | "already_deleted" | "not_found";
+  /** Photo of the deleted session, for the caller to remove from disk. */
+  postPhotoUrl: string | null;
+};
 
 const isUniqueViolation = (error: unknown) =>
   typeof error === "object" &&
@@ -320,8 +329,8 @@ const loadSessions = async (
   const { rows: sessionRows } = await client.query(
     `SELECT id, client_id, user_id, plan_id, plan_client_id, plan_name,
             plan_color_key, plan_icon_key, status,
-            note, started_at, finished_at, shared_to_profile, created_at,
-            updated_at
+            note, started_at, finished_at, shared_to_profile, post_title,
+            post_photo_url, created_at, updated_at
      FROM training_sessions
      WHERE user_id = $1 ${whereSql}
      ORDER BY started_at DESC, id DESC
@@ -411,9 +420,9 @@ export const trainingSessionsRepository = {
         `INSERT INTO training_sessions
           (user_id, client_id, plan_id, plan_client_id, plan_name, status,
            note, started_at, finished_at, shared_to_profile,
-           plan_color_key, plan_icon_key)
+           plan_color_key, plan_icon_key, post_title)
          VALUES ($1, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $8, $9, $10,
-                 $11, $12)
+                 $11, $12, $13)
          ON CONFLICT (user_id, client_id) WHERE client_id IS NOT NULL
          DO UPDATE SET
            plan_id = EXCLUDED.plan_id,
@@ -425,7 +434,9 @@ export const trainingSessionsRepository = {
            finished_at = EXCLUDED.finished_at,
            shared_to_profile = EXCLUDED.shared_to_profile,
            plan_color_key = EXCLUDED.plan_color_key,
-           plan_icon_key = EXCLUDED.plan_icon_key
+           plan_icon_key = EXCLUDED.plan_icon_key,
+           post_title = CASE WHEN $14::boolean THEN EXCLUDED.post_title
+                             ELSE training_sessions.post_title END
          RETURNING id, (xmax = 0) AS inserted`,
         [
           userId,
@@ -440,6 +451,8 @@ export const trainingSessionsRepository = {
           body.sharedToProfile,
           body.planColorKey ?? null,
           body.planIconKey ?? null,
+          body.postTitle ?? null,
+          body.postTitle !== undefined,
         ],
       );
       const sessionId = rows[0].id as string;
@@ -483,7 +496,8 @@ export const trainingSessionsRepository = {
         `UPDATE training_sessions
          SET plan_id = $1::uuid, plan_client_id = $2::uuid, plan_name = $3,
              status = $4, note = $5, started_at = $6, finished_at = $7,
-             shared_to_profile = $8, plan_color_key = $11, plan_icon_key = $12
+             shared_to_profile = $8, plan_color_key = $11, plan_icon_key = $12,
+             post_title = CASE WHEN $14::boolean THEN $13 ELSE post_title END
          WHERE id = $9 AND user_id = $10`,
         [
           body.planId ?? null,
@@ -498,6 +512,8 @@ export const trainingSessionsRepository = {
           userId,
           body.planColorKey ?? null,
           body.planIconKey ?? null,
+          body.postTitle ?? null,
+          body.postTitle !== undefined,
         ],
       );
       if (!rowCount) {
@@ -545,7 +561,7 @@ export const trainingSessionsRepository = {
   setSharedToProfile: async (
     userId: string,
     sessionId: string,
-    sharedToProfile: boolean,
+    input: SharedToProfileBodyInput,
   ): Promise<TrainingSessionRow | null> => {
     const pool = requirePool();
     const client = await pool.connect();
@@ -554,9 +570,19 @@ export const trainingSessionsRepository = {
       await client.query("BEGIN");
       const { rowCount } = await client.query(
         `UPDATE training_sessions
-         SET shared_to_profile = $1
+         SET shared_to_profile = $1,
+             post_title = CASE WHEN $5::boolean THEN $4 ELSE post_title END,
+             note = CASE WHEN $7::boolean THEN $6 ELSE note END
          WHERE id = $2 AND user_id = $3`,
-        [sharedToProfile, sessionId, userId],
+        [
+          input.sharedToProfile,
+          sessionId,
+          userId,
+          input.postTitle ?? null,
+          input.postTitle !== undefined,
+          input.note ?? null,
+          input.note !== undefined,
+        ],
       );
       if (!rowCount) {
         if (await isTombstoned(client, userId, { sessionId }))
@@ -591,7 +617,7 @@ export const trainingSessionsRepository = {
     try {
       await client.query("BEGIN");
       const { rows: found } = await client.query(
-        `SELECT client_id FROM training_sessions
+        `SELECT client_id, post_photo_url FROM training_sessions
          WHERE id = $1 AND user_id = $2`,
         [sessionId, userId],
       );
@@ -599,17 +625,21 @@ export const trainingSessionsRepository = {
       // Advisory lock before the row lock — same order as the POST upsert.
       if (clientId) await lockClientId(client, userId, clientId);
 
-      const { rowCount } = found.length
+      const { rows: deleted } = found.length
         ? await client.query(
             `DELETE FROM training_sessions
-             WHERE id = $1 AND user_id = $2`,
+             WHERE id = $1 AND user_id = $2
+             RETURNING post_photo_url`,
             [sessionId, userId],
           )
-        : { rowCount: 0 };
-      if (!rowCount) {
+        : { rows: [] };
+      if (deleted.length === 0) {
         const tombstoned = await isTombstoned(client, userId, { sessionId });
         await client.query("COMMIT");
-        return tombstoned ? "already_deleted" : "not_found";
+        return {
+          status: tombstoned ? "already_deleted" : "not_found",
+          postPhotoUrl: null,
+        };
       }
 
       await client.query(
@@ -619,7 +649,10 @@ export const trainingSessionsRepository = {
         [sessionId, userId, clientId],
       );
       await client.query("COMMIT");
-      return "deleted";
+      return {
+        status: "deleted",
+        postPhotoUrl: (deleted[0].post_photo_url as string | null) ?? null,
+      };
     } catch (e) {
       releaseError = await rollbackQuietly(client);
       throw e;
@@ -633,7 +666,11 @@ export const trainingSessionsRepository = {
    * and always leaves a `(user, clientId)` tombstone. Idempotent; an existing
    * tombstone keeps its original deleted_at.
    */
-  removeByClientId: async (userId: string, clientId: string): Promise<void> => {
+  /** Returns the deleted session's photo URL (if any) for file cleanup. */
+  removeByClientId: async (
+    userId: string,
+    clientId: string,
+  ): Promise<string | null> => {
     const pool = requirePool();
     const client = await pool.connect();
     let releaseError: Error | undefined;
@@ -643,7 +680,7 @@ export const trainingSessionsRepository = {
       const { rows } = await client.query(
         `DELETE FROM training_sessions
          WHERE user_id = $1 AND client_id = $2::uuid
-         RETURNING id`,
+         RETURNING id, post_photo_url`,
         [userId, clientId],
       );
       const sessionId = (rows[0]?.id as string | undefined) ?? randomUUID();
@@ -655,6 +692,55 @@ export const trainingSessionsRepository = {
         [sessionId, userId, clientId],
       );
       await client.query("COMMIT");
+      return (rows[0]?.post_photo_url as string | null | undefined) ?? null;
+    } catch (e) {
+      releaseError = await rollbackQuietly(client);
+      throw e;
+    } finally {
+      client.release(releaseError);
+    }
+  },
+
+  /**
+   * Sets (or clears) the session's post photo. Returns the updated row and
+   * the replaced URL, or null when the session is not the user's.
+   */
+  setPostPhoto: async (
+    userId: string,
+    sessionId: string,
+    photoUrl: string | null,
+  ): Promise<{ row: TrainingSessionRow; previousUrl: string | null } | null> => {
+    const pool = requirePool();
+    const client = await pool.connect();
+    let releaseError: Error | undefined;
+    try {
+      await client.query("BEGIN");
+      const { rows: previous } = await client.query(
+        `SELECT post_photo_url FROM training_sessions
+         WHERE id = $1 AND user_id = $2
+         FOR UPDATE`,
+        [sessionId, userId],
+      );
+      if (previous.length === 0) {
+        if (await isTombstoned(client, userId, { sessionId }))
+          throw sessionDeleted();
+        await client.query("ROLLBACK");
+        return null;
+      }
+      await client.query(
+        `UPDATE training_sessions SET post_photo_url = $1
+         WHERE id = $2 AND user_id = $3`,
+        [photoUrl, sessionId, userId],
+      );
+      const [row] = await loadSessions(client, userId, "AND id = $2", [
+        sessionId,
+      ]);
+      await client.query("COMMIT");
+      if (!row) return null;
+      return {
+        row,
+        previousUrl: (previous[0].post_photo_url as string | null) ?? null,
+      };
     } catch (e) {
       releaseError = await rollbackQuietly(client);
       throw e;

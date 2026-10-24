@@ -116,7 +116,45 @@ export const trainingSessionsController = {
     const session = await trainingSessionsService.setSharedToProfile(
       userId,
       parsedParams.data.id,
-      parsed.data.sharedToProfile,
+      parsed.data,
+    );
+    res.status(200).json(session);
+  }),
+
+  uploadPostPhoto: asyncHandler(async (req: Request, res: Response) => {
+    const parsedParams = uuidParamsSchema.safeParse(req.params);
+    if (!parsedParams.success) {
+      res
+        .status(400)
+        .json({ error: firstZodMessage(parsedParams.error.issues) });
+      return;
+    }
+    const file = req.file;
+    if (!file) {
+      res.status(400).json({ error: "missing_image" });
+      return;
+    }
+    const userId = (req as AuthRequest).auth.sub;
+    const session = await trainingSessionsService.uploadPostPhoto(
+      userId,
+      parsedParams.data.id,
+      file.buffer,
+    );
+    res.status(200).json(session);
+  }),
+
+  deletePostPhoto: asyncHandler(async (req: Request, res: Response) => {
+    const parsedParams = uuidParamsSchema.safeParse(req.params);
+    if (!parsedParams.success) {
+      res
+        .status(400)
+        .json({ error: firstZodMessage(parsedParams.error.issues) });
+      return;
+    }
+    const userId = (req as AuthRequest).auth.sub;
+    const session = await trainingSessionsService.deletePostPhoto(
+      userId,
+      parsedParams.data.id,
     );
     res.status(200).json(session);
   }),

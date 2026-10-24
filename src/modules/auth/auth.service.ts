@@ -4,6 +4,7 @@ import { AppError } from "../../common/errors.js";
 import { removeManagedImage } from "../../common/image-upload.js";
 import { EXERCISE_IMAGES_PUBLIC_PREFIX } from "../exercises/exercises.image-upload.js";
 import { AVATARS_PUBLIC_PREFIX } from "../profile/profile.avatar-upload.js";
+import { POST_PHOTOS_PUBLIC_PREFIX } from "../training-sessions/training-sessions.post-photo.js";
 import { env } from "../../config/env.js";
 import { JWT_ALGORITHM } from "../../middleware/auth.js";
 import type {
@@ -161,6 +162,9 @@ export const authService = {
       removeManagedImage(files.avatarUrl, AVATARS_PUBLIC_PREFIX),
       ...files.exerciseImageUrls.map((url) =>
         removeManagedImage(url, EXERCISE_IMAGES_PUBLIC_PREFIX),
+      ),
+      ...files.postPhotoUrls.map((url) =>
+        removeManagedImage(url, POST_PHOTOS_PUBLIC_PREFIX),
       ),
     ]);
   },

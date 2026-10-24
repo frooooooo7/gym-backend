@@ -155,7 +155,9 @@ Auth column: 🔒 = `Authorization: Bearer <jwt>` required.
 | GET | `/training-sessions/history` | 🔒 | Sync page incl. `deleted` tombstones (`updatedSince`, `cursor`). |
 | DELETE | `/training-sessions/by-client-id/:clientId` | 🔒 | Idempotent delete by client id → 204. |
 | DELETE | `/training-sessions/:id` | 🔒 | Idempotent delete → 204. |
-| PATCH | `/training-sessions/:id/shared-to-profile` | 🔒 | Toggle `sharedToProfile`. |
+| PATCH | `/training-sessions/:id/shared-to-profile` | 🔒 | Toggle `sharedToProfile`; optional `postTitle` (≤ 80 chars) and `note` (post body). Fields left out are kept. |
+| POST | `/training-sessions/:id/post-photo` | 🔒 | Multipart `photo` (JPEG/PNG/WebP ≤ 5 MB), stored as WebP ≤ 1600 px; replaces the previous one. |
+| DELETE | `/training-sessions/:id/post-photo` | 🔒 | Remove the post photo. |
 | GET | `/training-history` | 🔒 | Timeline list (ETag / 304). |
 | GET | `/training-history/:sessionId` | 🔒 | Timeline detail (ETag / 304). |
 | GET | `/training-sessions` | 🔒 | **v1 only**: alias of `GET /training-history`. |
@@ -188,7 +190,7 @@ Auth column: 🔒 = `Authorization: Bearer <jwt>` required.
 | DELETE | `/posts/:sessionId/comments/:commentId` | 🔒 | Delete own comment / comment on own post. |
 
 Static files (no prefix, no auth, long-lived cache): `GET /uploads/exercise-images/<file>`,
-`GET /uploads/avatars/<file>`. Upload URLs returned by the API are relative (`/uploads/...`).
+`GET /uploads/avatars/<file>`, `GET /uploads/post-photos/<file>`. Upload URLs returned by the API are relative (`/uploads/...`).
 Bundled system exercise illustrations: `GET /static/exercise-images/<file>` (from `public/`, 7-day cache).
 
 ### Legacy vs `/api/v1` differences

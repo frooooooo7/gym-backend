@@ -703,11 +703,33 @@ describe("training sessions routes", () => {
     expect(updateCall?.[1]?.slice(3, 5)).toEqual([null, true]);
   });
 
-  it("rejects a post title longer than 80 characters", async () => {
+  it("cuts a post title longer than 80 code points instead of rejecting it", async () => {
+    whenSqlContains({
+      "SET shared_to_profile = $1": { rowCount: 1 },
+      "FROM training_sessions": { rows: [sessionRow] },
+    });
+
+    // 41 flags = 82 code points: fits in 80 grapheme clusters on the phone,
+    // but not in Postgres char_length.
     const res = await request(app)
       .patch(`/training-sessions/${SESSION_ID}/shared-to-profile`)
       .set(authHeaders())
-      .send({ sharedToProfile: true, postTitle: "ą".repeat(81) });
+      .send({ sharedToProfile: true, postTitle: "🇵🇱".repeat(41) });
+
+    expect(res.status).toBe(200);
+    const updateCall = mockQuery.mock.calls.find((call) =>
+      String(call[0]).includes("SET shared_to_profile = $1"),
+    );
+    const title = updateCall?.[1]?.[3] as string;
+    expect(Array.from(title)).toHaveLength(80);
+    expect(title).toBe("🇵🇱".repeat(40));
+  });
+
+  it("rejects a post title that is not a string", async () => {
+    const res = await request(app)
+      .patch(`/training-sessions/${SESSION_ID}/shared-to-profile`)
+      .set(authHeaders())
+      .send({ sharedToProfile: true, postTitle: 42 });
 
     expect(res.status).toBe(400);
     expect(res.body).toMatchObject({ error: "invalid_post_title" });

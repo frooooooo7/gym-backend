@@ -167,24 +167,26 @@ const sessionExerciseSchema = z.object({
 });
 
 /**
- * Post title: trimmed, 1–80 code points (Postgres char_length); blank or
- * null clears it. Left out (`undefined`) keeps the stored title, so older
- * app versions that don't know the field never wipe it.
+ * Post title: trimmed and cut to 80 code points (Postgres char_length);
+ * blank or null clears it. A too-long title is cut, not rejected, because it
+ * travels inside the session body and a cosmetic field must never block a
+ * workout from syncing. Left out (`undefined`) keeps the stored title, so
+ * older app versions that don't know the field never wipe it.
  */
+export const POST_TITLE_MAX_LENGTH = 80;
+
 const postTitle = z
   .string({ error: "invalid_post_title" })
-  .max(400, "invalid_post_title")
+  .max(2000, "invalid_post_title")
   .nullable()
   .optional()
-  .transform((value, ctx) => {
+  .transform((value) => {
     if (value === undefined) return undefined;
     const trimmed = value?.trim() ?? "";
     if (trimmed.length === 0) return null;
-    if (Array.from(trimmed).length > 80) {
-      ctx.addIssue({ code: "custom", message: "invalid_post_title" });
-      return z.NEVER;
-    }
-    return trimmed;
+    const codePoints = Array.from(trimmed);
+    if (codePoints.length <= POST_TITLE_MAX_LENGTH) return trimmed;
+    return codePoints.slice(0, POST_TITLE_MAX_LENGTH).join("").trimEnd();
   });
 
 export const trainingSessionBodySchema = z

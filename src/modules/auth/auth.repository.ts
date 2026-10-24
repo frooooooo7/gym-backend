@@ -152,10 +152,16 @@ export const authRepository = {
         return null;
       }
 
-      const { rows: photoRows } = await client.query(
+      // Lock every session row (not only those with a photo yet), so a
+      // concurrent post-photo upload either commits first and is seen here,
+      // or waits and then finds its session gone.
+      const { rows: sessionRows } = await client.query(
         `SELECT post_photo_url FROM training_sessions
-         WHERE user_id = $1 AND post_photo_url IS NOT NULL`,
+         WHERE user_id = $1 FOR UPDATE`,
         [id],
+      );
+      const photoRows = sessionRows.filter(
+        (row) => row.post_photo_url != null,
       );
 
       await client.query("DELETE FROM training_plans WHERE user_id = $1", [id]);

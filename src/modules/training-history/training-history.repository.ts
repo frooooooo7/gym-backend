@@ -36,6 +36,8 @@ export interface TrainingHistoryDetailRow {
   plan_icon_key: string | null;
   note: string | null;
   shared_to_profile: boolean;
+  post_title: string | null;
+  post_photo_url: string | null;
   updated_at: Date;
 }
 
@@ -221,6 +223,8 @@ export const trainingHistoryRepository = {
         ts.plan_icon_key,
         ts.note,
         ts.shared_to_profile,
+        ts.post_title,
+        ts.post_photo_url,
         ts.updated_at
       FROM training_sessions ts
       WHERE ts.id = $1::uuid AND ts.user_id = $2

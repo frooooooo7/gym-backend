@@ -19,6 +19,8 @@ export interface DeletedAccountFiles {
   avatarUrl: string | null;
   /** image_url of the user's custom exercises that were actually deleted. */
   exerciseImageUrls: string[];
+  /** post_photo_url of the user's training sessions. */
+  postPhotoUrls: string[];
 }
 
 const USER_COLUMNS =
@@ -150,6 +152,18 @@ export const authRepository = {
         return null;
       }
 
+      // Lock every session row (not only those with a photo yet), so a
+      // concurrent post-photo upload either commits first and is seen here,
+      // or waits and then finds its session gone.
+      const { rows: sessionRows } = await client.query(
+        `SELECT post_photo_url FROM training_sessions
+         WHERE user_id = $1 FOR UPDATE`,
+        [id],
+      );
+      const photoRows = sessionRows.filter(
+        (row) => row.post_photo_url != null,
+      );
+
       await client.query("DELETE FROM training_plans WHERE user_id = $1", [id]);
 
       const { rows: exerciseRows } = await client.query(
@@ -171,6 +185,7 @@ export const authRepository = {
         exerciseImageUrls: exerciseRows
           .map((row) => row.image_url as string | null)
           .filter((url): url is string => !!url),
+        postPhotoUrls: photoRows.map((row) => row.post_photo_url as string),
       };
     } catch (e) {
       await client.query("ROLLBACK").catch(() => undefined);

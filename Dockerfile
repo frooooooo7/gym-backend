@@ -29,7 +29,7 @@ COPY public ./public
 # Upload directories must exist in the image and belong to `node`: a fresh
 # named volume mounted at /app/uploads copies this content and ownership on
 # first mount, so the non-root process can write exercise images and avatars.
-RUN mkdir -p /app/uploads/exercise-images /app/uploads/avatars \
+RUN mkdir -p /app/uploads/exercise-images /app/uploads/avatars /app/uploads/post-photos \
   && chown -R node:node /app/uploads
 
 USER node

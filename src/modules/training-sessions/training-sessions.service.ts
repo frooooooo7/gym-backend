@@ -1,6 +1,17 @@
 import { AppError } from "../../common/errors.js";
 import {
+  discardStoredImage,
+  removeManagedImage,
+  storeImage,
+  toWebp,
+} from "../../common/image-upload.js";
+import {
+  POST_PHOTO_MAX_DIMENSION,
+  POST_PHOTOS_PUBLIC_PREFIX,
+} from "./training-sessions.post-photo.js";
+import {
   encodeHistoryCursor,
+  type SharedToProfileBodyInput,
   type TrainingSessionBodyInput,
 } from "./training-sessions.schemas.js";
 import {
@@ -22,6 +33,8 @@ const formatSession = (row: TrainingSessionRow) => ({
   startedAt: row.started_at,
   finishedAt: row.finished_at,
   sharedToProfile: row.shared_to_profile,
+  postTitle: row.post_title,
+  postPhotoUrl: row.post_photo_url,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
   exercises: row.exercises.map((exercise) => ({
@@ -61,6 +74,9 @@ const formatSession = (row: TrainingSessionRow) => ({
     })),
   })),
 });
+
+const removePostPhoto = (url: string | null) =>
+  removeManagedImage(url, POST_PHOTOS_PUBLIC_PREFIX);
 
 export const trainingSessionsService = {
   upsert: async (userId: string, body: TrainingSessionBodyInput) => {
@@ -122,25 +138,68 @@ export const trainingSessionsService = {
 
   remove: async (userId: string, sessionId: string) => {
     const result = await trainingSessionsRepository.remove(userId, sessionId);
-    if (result === "not_found")
+    if (result.status === "not_found")
       throw new AppError(404, "not_found_or_not_yours");
+    await removePostPhoto(result.postPhotoUrl);
   },
 
   removeByClientId: async (userId: string, clientId: string) => {
-    await trainingSessionsRepository.removeByClientId(userId, clientId);
+    const photoUrl = await trainingSessionsRepository.removeByClientId(
+      userId,
+      clientId,
+    );
+    await removePostPhoto(photoUrl);
   },
 
   setSharedToProfile: async (
     userId: string,
     sessionId: string,
-    sharedToProfile: boolean,
+    input: SharedToProfileBodyInput,
   ) => {
     const row = await trainingSessionsRepository.setSharedToProfile(
       userId,
       sessionId,
-      sharedToProfile,
+      input,
     );
     if (!row) throw new AppError(404, "not_found_or_not_yours");
     return formatSession(row);
+  },
+
+  /** Re-encodes the upload as WebP and makes it the session's post photo. */
+  uploadPostPhoto: async (userId: string, sessionId: string, upload: Buffer) => {
+    const image = await toWebp(upload, POST_PHOTO_MAX_DIMENSION);
+    const stored = await storeImage(POST_PHOTOS_PUBLIC_PREFIX, image);
+    let result: Awaited<
+      ReturnType<typeof trainingSessionsRepository.setPostPhoto>
+    >;
+    try {
+      result = await trainingSessionsRepository.setPostPhoto(
+        userId,
+        sessionId,
+        stored.publicPath,
+      );
+    } catch (e) {
+      await discardStoredImage(stored);
+      throw e;
+    }
+    if (!result) {
+      await discardStoredImage(stored);
+      throw new AppError(404, "not_found_or_not_yours");
+    }
+    if (result.previousUrl !== stored.publicPath) {
+      await removePostPhoto(result.previousUrl);
+    }
+    return formatSession(result.row);
+  },
+
+  deletePostPhoto: async (userId: string, sessionId: string) => {
+    const result = await trainingSessionsRepository.setPostPhoto(
+      userId,
+      sessionId,
+      null,
+    );
+    if (!result) throw new AppError(404, "not_found_or_not_yours");
+    await removePostPhoto(result.previousUrl);
+    return formatSession(result.row);
   },
 };

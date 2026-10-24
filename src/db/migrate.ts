@@ -672,6 +672,21 @@ const MIGRATIONS: Migration[] = [
         ON users (created_at DESC, id DESC);
     `,
   },
+  {
+    // A shared workout can carry its own post title and one photo; the post
+    // body reuses the session note.
+    name: "026_training_session_post_title_photo",
+    sql: `
+      ALTER TABLE training_sessions
+        ADD COLUMN IF NOT EXISTS post_title TEXT,
+        ADD COLUMN IF NOT EXISTS post_photo_url TEXT;
+      ALTER TABLE training_sessions
+        DROP CONSTRAINT IF EXISTS training_sessions_post_title_length;
+      ALTER TABLE training_sessions
+        ADD CONSTRAINT training_sessions_post_title_length
+        CHECK (post_title IS NULL OR char_length(post_title) BETWEEN 1 AND 80);
+    `,
+  },
 ];
 
 const ADVISORY_LOCK_ID = 3_742_116_919;

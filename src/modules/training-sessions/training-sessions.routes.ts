@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/auth.js";
+import { singleImageUpload } from "../../common/image-upload.js";
 import { writeLimiter } from "../../middleware/rate-limit.js";
 import { trainingSessionsController } from "./training-sessions.controller.js";
 
@@ -45,4 +46,17 @@ trainingSessionsRouter.patch(
   requireAuth,
   writeLimiter,
   trainingSessionsController.setSharedToProfile,
+);
+trainingSessionsRouter.post(
+  "/training-sessions/:id/post-photo",
+  requireAuth,
+  writeLimiter,
+  singleImageUpload("photo"),
+  trainingSessionsController.uploadPostPhoto,
+);
+trainingSessionsRouter.delete(
+  "/training-sessions/:id/post-photo",
+  requireAuth,
+  writeLimiter,
+  trainingSessionsController.deletePostPhoto,
 );

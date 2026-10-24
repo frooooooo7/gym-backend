@@ -34,6 +34,10 @@ import { trainingPlansRouter } from "./modules/training-plans/training-plans.rou
 import { trainingSessionsRouter } from "./modules/training-sessions/training-sessions.routes.js";
 import { profileRouter } from "./modules/profile/profile.routes.js";
 import { ensureAvatarsDir } from "./modules/profile/profile.avatar-upload.js";
+import {
+  ensurePostPhotosDir,
+  postPhotosDir,
+} from "./modules/training-sessions/training-sessions.post-photo.js";
 import { feedRouter } from "./modules/feed/feed.routes.js";
 import { notificationsRouter } from "./modules/notifications/notifications.routes.js";
 
@@ -153,6 +157,17 @@ export const createApp = () => {
   app.use(
     "/uploads/avatars",
     express.static(avatarsDir, {
+      maxAge: "365d",
+      immutable: true,
+      etag: false,
+      lastModified: false,
+    }),
+  );
+
+  ensurePostPhotosDir();
+  app.use(
+    "/uploads/post-photos",
+    express.static(postPhotosDir, {
       maxAge: "365d",
       immutable: true,
       etag: false,

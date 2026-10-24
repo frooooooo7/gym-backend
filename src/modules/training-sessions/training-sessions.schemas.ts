@@ -166,6 +166,29 @@ const sessionExerciseSchema = z.object({
   sets: z.array(sessionSetSchema).min(1, "missing_sets").max(50),
 });
 
+/**
+ * Post title: trimmed and cut to 80 code points (Postgres char_length);
+ * blank or null clears it. A too-long title is cut, not rejected, because it
+ * travels inside the session body and a cosmetic field must never block a
+ * workout from syncing. Left out (`undefined`) keeps the stored title, so
+ * older app versions that don't know the field never wipe it.
+ */
+export const POST_TITLE_MAX_LENGTH = 80;
+
+const postTitle = z
+  .string({ error: "invalid_post_title" })
+  .max(2000, "invalid_post_title")
+  .nullable()
+  .optional()
+  .transform((value) => {
+    if (value === undefined) return undefined;
+    const trimmed = value?.trim() ?? "";
+    if (trimmed.length === 0) return null;
+    const codePoints = Array.from(trimmed);
+    if (codePoints.length <= POST_TITLE_MAX_LENGTH) return trimmed;
+    return codePoints.slice(0, POST_TITLE_MAX_LENGTH).join("").trimEnd();
+  });
+
 export const trainingSessionBodySchema = z
   .object({
     clientId: postgresUuid,
@@ -179,6 +202,7 @@ export const trainingSessionBodySchema = z
     startedAt: requiredDate,
     finishedAt: optionalDate,
     sharedToProfile: z.boolean().optional().default(false),
+    postTitle,
     exercises: z
       .array(sessionExerciseSchema)
       .min(1, "missing_exercises")
@@ -205,8 +229,20 @@ export type TrainingSessionBodyInput = z.infer<
   typeof trainingSessionBodySchema
 >;
 
+/** `postTitle` / `note` left out keep their stored values. */
 export const sharedToProfileBodySchema = z.object({
   sharedToProfile: z.boolean(),
+  postTitle,
+  note: z
+    .string()
+    .max(2000)
+    .nullable()
+    .optional()
+    .transform((value) => {
+      if (value === undefined) return undefined;
+      const trimmed = value?.trim() ?? "";
+      return trimmed.length > 0 ? trimmed : null;
+    }),
 });
 
 export type SharedToProfileBodyInput = z.infer<

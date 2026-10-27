@@ -5,7 +5,8 @@
  *
  * Input files are named by the number at the end of the system exercise id,
  * zero-padded to two digits (01 = …001 bench press, 14 = …014 stretch,
- * 113 = …113), any of png/jpg/jpeg/webp, in 4:3 landscape.
+ * 113 = …113), any of png/jpg/jpeg/webp, in 4:3 landscape or square (1:1,
+ * padded to 4:3 with a mirrored backdrop).
  *
  * Usage: npm run import:exercise-illustrations [-- inputDir]
  *   inputDir  defaults to ../exercise-illustrations/generated
@@ -52,20 +53,38 @@ const main = async () => {
 
     const input = path.join(INPUT_DIR, matches[0]);
     const { width, height } = await sharp(input).metadata();
-    if (
-      !width ||
-      !height ||
-      Math.abs(width / height - WIDTH / HEIGHT) > ASPECT_TOLERANCE
-    ) {
-      problems.push(`${matches[0]} (${slug}): ${width}x${height} is not 4:3`);
+    const ratio = width && height ? width / height : 0;
+    const isLandscape = Math.abs(ratio - WIDTH / HEIGHT) <= ASPECT_TOLERANCE;
+    const isSquare = Math.abs(ratio - 1) <= ASPECT_TOLERANCE;
+    if (!isLandscape && !isSquare) {
+      problems.push(
+        `${matches[0]} (${slug}): ${width}x${height} is neither 4:3 nor 1:1`,
+      );
       continue;
     }
 
     const target = path.join(OUTPUT_DIR, `${slug}.webp`);
-    await sharp(input)
-      .resize(WIDTH, HEIGHT, { fit: "cover", withoutEnlargement: true })
-      .webp({ quality: 80 })
-      .toFile(target);
+    if (isLandscape) {
+      await sharp(input)
+        .resize(WIDTH, HEIGHT, { fit: "cover", withoutEnlargement: true })
+        .webp({ quality: 80 })
+        .toFile(target);
+    } else {
+      // Square originals keep the whole figure: scale to the card height and
+      // lay it over a heavily blurred copy of itself that fills the 4:3 card.
+      const side = Math.floor((WIDTH - HEIGHT) / 2);
+      const backdrop = await sharp(input)
+        .resize(WIDTH, HEIGHT, { fit: "cover" })
+        .blur(40)
+        .toBuffer();
+      const figure = await sharp(input)
+        .resize(HEIGHT, HEIGHT, { fit: "cover" })
+        .toBuffer();
+      await sharp(backdrop)
+        .composite([{ input: figure, left: side, top: 0 }])
+        .webp({ quality: 80 })
+        .toFile(target);
+    }
     const { size } = await fs.stat(target);
     console.log(`✓ ${matches[0]} → ${slug}.webp (${Math.round(size / 1024)} KB)`);
   }

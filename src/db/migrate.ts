@@ -687,6 +687,42 @@ const MIGRATIONS: Migration[] = [
         CHECK (post_title IS NULL OR char_length(post_title) BETWEEN 1 AND 80);
     `,
   },
+  {
+    // Exercises from the training plan that the library lacked. Their
+    // illustrations are attached on every start by syncSystemExerciseImages.
+    name: "027_seed_plan_exercises",
+    sql: `
+      INSERT INTO exercises (id, name, muscles, category, is_system, tracking_type) VALUES
+        ('a1000000-0000-0000-0000-000000000020', 'Handstand',                                        ARRAY['shoulders','triceps','abs'],  'calisthenics', true, 'duration'),
+        ('a1000000-0000-0000-0000-000000000021', 'Negatywy pompek w staniu na rękach',               ARRAY['shoulders','triceps'],        'calisthenics', true, 'reps'),
+        ('a1000000-0000-0000-0000-000000000022', 'Rozpiętki skośne z hantlami',                      ARRAY['chest'],                      'isolation',    true, 'weight_reps'),
+        ('a1000000-0000-0000-0000-000000000023', 'Prostowanie ramion z hantlem nad głową',           ARRAY['triceps'],                    'isolation',    true, 'weight_reps'),
+        ('a1000000-0000-0000-0000-000000000024', 'Muscle-up',                                        ARRAY['back','triceps','chest'],     'calisthenics', true, 'reps'),
+        ('a1000000-0000-0000-0000-000000000025', 'Podciąganie z obciążeniem',                        ARRAY['back','biceps'],              'compound',     true, 'weight_reps'),
+        ('a1000000-0000-0000-0000-000000000026', 'Wiosłowanie T-bar',                                ARRAY['back','biceps'],              'compound',     true, 'weight_reps'),
+        ('a1000000-0000-0000-0000-000000000027', 'Wiosłowanie T-bar na maszynie z podparciem klatki', ARRAY['back','biceps'],             'compound',     true, 'weight_reps'),
+        ('a1000000-0000-0000-0000-000000000028', 'Przyciąganie siedząc, wąski uchwyt neutralny',     ARRAY['back','biceps'],              'compound',     true, 'weight_reps'),
+        ('a1000000-0000-0000-0000-000000000029', 'Face pull',                                        ARRAY['shoulders','back'],           'isolation',    true, 'weight_reps'),
+        ('a1000000-0000-0000-0000-000000000030', 'Uginanie ramion ze sztangą',                       ARRAY['biceps'],                     'isolation',    true, 'weight_reps'),
+        ('a1000000-0000-0000-0000-000000000031', 'Uginanie młotkowe z hantlami',                     ARRAY['biceps'],                     'isolation',    true, 'weight_reps'),
+        ('a1000000-0000-0000-0000-000000000032', 'Front lever',                                      ARRAY['back','abs'],                 'calisthenics', true, 'duration'),
+        ('a1000000-0000-0000-0000-000000000033', 'Martwy ciąg rumuński (RDL)',                       ARRAY['legs','glutes','back'],       'compound',     true, 'weight_reps'),
+        ('a1000000-0000-0000-0000-000000000034', 'Uginanie nóg leżąc',                               ARRAY['legs'],                       'isolation',    true, 'weight_reps'),
+        ('a1000000-0000-0000-0000-000000000035', 'Prostowanie nóg na maszynie',                      ARRAY['legs'],                       'isolation',    true, 'weight_reps'),
+        ('a1000000-0000-0000-0000-000000000036', 'Wspięcia na palce (łydki)',                        ARRAY['legs'],                       'isolation',    true, 'weight_reps'),
+        ('a1000000-0000-0000-0000-000000000037', 'Unoszenie nóg w zwisie',                           ARRAY['abs'],                        'calisthenics', true, 'reps'),
+        ('a1000000-0000-0000-0000-000000000038', 'Spięcia brzucha na maszynie',                      ARRAY['abs'],                        'isolation',    true, 'weight_reps'),
+        ('a1000000-0000-0000-0000-000000000039', 'Wyciskanie sztangi stojąc (OHP)',                  ARRAY['shoulders','triceps'],        'compound',     true, 'weight_reps'),
+        ('a1000000-0000-0000-0000-000000000040', 'Odwrotne rozpiętki',                               ARRAY['shoulders','back'],           'isolation',    true, 'weight_reps'),
+        ('a1000000-0000-0000-0000-000000000041', 'Uginanie na modlitewniku',                         ARRAY['biceps'],                     'isolation',    true, 'weight_reps'),
+        ('a1000000-0000-0000-0000-000000000042', 'Wyciskanie francuskie leżąc',                      ARRAY['triceps'],                    'isolation',    true, 'weight_reps'),
+        ('a1000000-0000-0000-0000-000000000043', 'Uginanie młotkowe z liną na wyciągu',              ARRAY['biceps'],                     'isolation',    true, 'weight_reps'),
+        ('a1000000-0000-0000-0000-000000000044', 'Wyciskanie hantli na ławce skośnej',               ARRAY['chest','shoulders','triceps'],'compound',     true, 'weight_reps'),
+        ('a1000000-0000-0000-0000-000000000045', 'Rozpiętki na maszynie (butterfly)',                ARRAY['chest'],                      'isolation',    true, 'weight_reps'),
+        ('a1000000-0000-0000-0000-000000000046', 'Ściąganie drążka wyciągu',                         ARRAY['back','biceps'],              'compound',     true, 'weight_reps')
+      ON CONFLICT (id) DO NOTHING;
+    `,
+  },
 ];
 
 const ADVISORY_LOCK_ID = 3_742_116_919;

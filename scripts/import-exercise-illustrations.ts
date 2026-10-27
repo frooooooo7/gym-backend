@@ -6,7 +6,7 @@
  * Input files are named by the number at the end of the system exercise id,
  * zero-padded to two digits (01 = …001 bench press, 14 = …014 stretch,
  * 113 = …113), any of png/jpg/jpeg/webp, in 4:3 landscape or square (1:1,
- * padded to 4:3 with a mirrored backdrop).
+ * padded to 4:3 over a blurred copy of itself).
  *
  * Usage: npm run import:exercise-illustrations [-- inputDir]
  *   inputDir  defaults to ../exercise-illustrations/generated

@@ -1,5 +1,5 @@
-
 import { AppError } from "../../common/errors.js";
+import { progressionOf, type ProgressionSettings } from "../../common/progression.js";
 import { isForeignKeyViolation, isUniqueViolation } from "../../common/pg-errors.js";
 import {
   discardStoredImage,
@@ -123,6 +123,22 @@ export const profileService = {
       throw new AppError(404, "user_not_found");
     }
     return formatOwnProfile(row, stats);
+  },
+
+  /** Weight progression of the account; `progression: null` = never set. */
+  getProgression: async (userId: string) => {
+    const row = await profileRepository.findProgression(userId);
+    if (!row) throw new AppError(404, "user_not_found");
+    return { progression: progressionOf(row.progression_settings) };
+  },
+
+  updateProgression: async (
+    userId: string,
+    progression: ProgressionSettings | null,
+  ) => {
+    const row = await profileRepository.updateProgression(userId, progression);
+    if (!row) throw new AppError(404, "user_not_found");
+    return { progression: progressionOf(row.progression_settings) };
   },
 
   /**

@@ -168,6 +168,7 @@ Auth column: 🔒 = `Authorization: Bearer <jwt>` required.
 | POST | `/profile/me/onboarding/complete` | 🔒 | Mark onboarding done (idempotent) → own profile. |
 | POST | `/profile/me/avatar` | 🔒 | Multipart field `avatar` (JPEG/PNG/WebP ≤ 5 MB, re-encoded to WebP ≤ 512 px) → `avatarUrl`. |
 | DELETE | `/profile/me/avatar` | 🔒 | Remove avatar. |
+| GET / PUT | `/profile/me/progression` | 🔒 | Weight progression method (see [Weight progression](#weight-progression)). |
 | GET / PUT / DELETE | `/profile/me/body-weight[/:date]` | 🔒 | Body weight log (see [Body weight log](#body-weight-log)). |
 | GET / PUT / DELETE | `/profile/me/body-measurements[/:date]` | 🔒 | Body measurements log (see [Body measurements log](#body-measurements-log)). |
 | GET | `/profile/following` | 🔒 | Who I follow (`limit`, `offset`). |
@@ -686,6 +687,33 @@ from server time.
   adding an entry.
 - Migration `018_body_weight_entries` turns each existing profile weight into a first entry dated the
   day the account finished onboarding. Entries are removed with the account.
+
+## Weight progression
+
+How the app suggests the next weight in a workout (Settings → Progresja). Stored per account as JSON;
+a plan can override it with its own `progression` field (`null` = follow the account, a missing key
+leaves the plan's method unchanged).
+
+| Endpoint | Body | Response |
+| --- | --- | --- |
+| `GET /profile/me/progression` | | `200 { "progression": Settings \| null }` — `null` = never set (no progression) |
+| `PUT /profile/me/progression` | `{ "progression": Settings \| null }` | `200 { "progression": … }` |
+
+`Settings` (missing fields take the defaults shown; unknown keys are dropped):
+
+| Field | Values | Error |
+| --- | --- | --- |
+| `method` | `none`, `fixed`, `percent`, `double`, `rir` (required) | `invalid_progression_method` |
+| `unit` | `kg` / `lb` — the unit `step` and `legStep` were picked in (`kg`) | `invalid_progression_unit` |
+| `step` | weight step, > 0 and ≤ 50 (`2.5`) | `invalid_progression_step` |
+| `legStep` | bigger step for leg exercises or `null` (`null`) | `invalid_progression_leg_step` |
+| `percent` | `percent` method, > 0 and ≤ 20 (`2.5`) | `invalid_progression_percent` |
+| `rirThreshold` | `rir` method, 1–5 (`2`) | `invalid_progression_rir` |
+| `sessionsToIncrease` | successful workouts in a row before a raise, 1–3 (`1`) | `invalid_progression_sessions` |
+| `deload` | −10 % after 3 failed workouts in a row (`false`) | `invalid_progression_deload` |
+
+A body that is not an object fails with `400 invalid_progression`. Migration `029_progression_settings`
+adds `users.progression_settings` and `training_plans.progression`.
 
 ## Body measurements log
 

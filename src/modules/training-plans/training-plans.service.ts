@@ -1,4 +1,5 @@
 import { AppError } from "../../common/errors.js";
+import { progressionOf } from "../../common/progression.js";
 import { feedRepository } from "../feed/feed.repository.js";
 import { profileRepository } from "../profile/profile.repository.js";
 import { trainingHistoryRepository } from "../training-history/training-history.repository.js";
@@ -25,6 +26,7 @@ const formatPlan = (row: TrainingPlanRow, { withWeights = true } = {}) => ({
   goal: row.goal,
   progressionStepKg:
     row.progression_step_kg === null ? null : Number(row.progression_step_kg),
+  progression: progressionOf(row.progression),
   highlightPlanColor: row.highlight_plan_color,
   showRir: row.show_rir,
   showTempo: row.show_tempo,
@@ -84,6 +86,7 @@ const toCopySource = (
     iconKey: row.icon_key,
     goal: row.goal,
     progressionStepKg: row.progression_step_kg,
+    progression: progressionOf(row.progression),
     highlightPlanColor: row.highlight_plan_color,
     showRir: row.show_rir,
     showTempo: row.show_tempo,
@@ -181,6 +184,7 @@ export const trainingPlansService = {
       iconKey: null,
       goal: null,
       progressionStepKg: null,
+      progression: null,
       highlightPlanColor: true,
       showRir: true,
       showTempo: true,

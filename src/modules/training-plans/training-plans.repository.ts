@@ -48,6 +48,7 @@ export interface TrainingPlanRow {
   icon_key: string | null;
   goal: string | null;
   progression_step_kg: string | null;
+  progression: unknown;
   highlight_plan_color: boolean;
   show_rir: boolean;
   show_tempo: boolean;
@@ -63,8 +64,8 @@ export interface TrainingPlanRow {
 
 const PLAN_COLUMNS = `id, client_id, user_id, name, note, selected_days,
   default_rest_seconds, color_key, icon_key, goal, progression_step_kg,
-  highlight_plan_color, show_rir, show_tempo, is_public, copied_from_plan_id,
-  copied_from_user_id, copy_count, created_at, updated_at,
+  progression, highlight_plan_color, show_rir, show_tempo, is_public,
+  copied_from_plan_id, copied_from_user_id, copy_count, created_at, updated_at,
   (SELECT u.handle FROM users u WHERE u.id = training_plans.copied_from_user_id)
     AS copied_from_handle`;
 
@@ -79,6 +80,12 @@ const planSettingsParams = (body: TrainingPlanBodyInput) => [
   body.showTempo,
 ];
 
+/** [provided, json]: an older client without the field leaves it as it was. */
+const progressionParams = (body: TrainingPlanBodyInput) => [
+  body.progression !== undefined,
+  body.progression == null ? null : JSON.stringify(body.progression),
+];
+
 type PlanBodyExercise = TrainingPlanBodyInput["exercises"][number];
 
 /** Plan do skopiowania: cudzy plan albo plan zbudowany z posta. */
@@ -90,6 +97,7 @@ export interface PlanCopySource {
   iconKey: string | null;
   goal: string | null;
   progressionStepKg: string | null;
+  progression: unknown;
   highlightPlanColor: boolean;
   showRir: boolean;
   showTempo: boolean;
@@ -393,9 +401,9 @@ export const trainingPlansRepository = {
              (user_id, client_id, name, note, selected_days,
               default_rest_seconds, color_key, icon_key, goal,
               progression_step_kg, highlight_plan_color, show_rir, show_tempo,
-              is_public)
+              is_public, progression)
            VALUES ($1, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-                   COALESCE($14::boolean, false))
+                   COALESCE($14::boolean, false), $16::jsonb)
            ON CONFLICT (user_id, client_id) WHERE client_id IS NOT NULL
            DO UPDATE SET
              name = EXCLUDED.name,
@@ -410,7 +418,9 @@ export const trainingPlansRepository = {
              show_rir = EXCLUDED.show_rir,
              show_tempo = EXCLUDED.show_tempo,
              -- Starszy klient nie wysyła widoczności — zostaje, jak była.
-             is_public = COALESCE($14::boolean, training_plans.is_public)
+             is_public = COALESCE($14::boolean, training_plans.is_public),
+             progression = CASE WHEN $15::boolean THEN EXCLUDED.progression
+                                ELSE training_plans.progression END
            RETURNING id, (xmax = 0) AS inserted`,
           [
             userId,
@@ -420,6 +430,7 @@ export const trainingPlansRepository = {
             body.selectedDays,
             ...planSettingsParams(body),
             body.isPublic ?? null,
+            ...progressionParams(body),
           ],
         );
         planId = rows[0].id as string;
@@ -430,9 +441,9 @@ export const trainingPlansRepository = {
              (user_id, name, note, selected_days,
               default_rest_seconds, color_key, icon_key, goal,
               progression_step_kg, highlight_plan_color, show_rir, show_tempo,
-              is_public)
+              is_public, progression)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-                   COALESCE($13::boolean, false))
+                   COALESCE($13::boolean, false), $14::jsonb)
            RETURNING id`,
           [
             userId,
@@ -441,6 +452,7 @@ export const trainingPlansRepository = {
             body.selectedDays,
             ...planSettingsParams(body),
             body.isPublic ?? null,
+            progressionParams(body)[1],
           ],
         );
         planId = rows[0].id as string;
@@ -476,7 +488,9 @@ export const trainingPlansRepository = {
              default_rest_seconds = $6, color_key = $7, icon_key = $8,
              goal = $9, progression_step_kg = $10, highlight_plan_color = $11,
              show_rir = $12, show_tempo = $13,
-             is_public = COALESCE($14::boolean, is_public)
+             is_public = COALESCE($14::boolean, is_public),
+             progression = CASE WHEN $15::boolean THEN $16::jsonb
+                                ELSE progression END
          WHERE id = $4 AND user_id = $5`,
         [
           body.name,
@@ -486,6 +500,7 @@ export const trainingPlansRepository = {
           userId,
           ...planSettingsParams(body),
           body.isPublic ?? null,
+          ...progressionParams(body),
         ],
       );
       if (!rowCount) {
@@ -593,9 +608,9 @@ export const trainingPlansRepository = {
            (user_id, client_id, name, note, selected_days,
             default_rest_seconds, color_key, icon_key, goal,
             progression_step_kg, highlight_plan_color, show_rir, show_tempo,
-            is_public, copied_from_plan_id, copied_from_user_id)
+            is_public, copied_from_plan_id, copied_from_user_id, progression)
          VALUES ($1, $2::uuid, $3, $4, '{}', $5, $6, $7, $8, $9, $10, $11, $12,
-                 false, $13, $14)
+                 false, $13, $14, $15::jsonb)
          RETURNING id`,
         [
           viewerId,
@@ -612,6 +627,7 @@ export const trainingPlansRepository = {
           source.showTempo,
           source.copiedFromPlanId,
           source.copiedFromUserId,
+          source.progression == null ? null : JSON.stringify(source.progression),
         ],
       );
       const planId = rows[0].id as string;

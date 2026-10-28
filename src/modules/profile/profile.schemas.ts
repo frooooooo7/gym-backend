@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { progressionSettingsSchema } from "../../common/progression.js";
 import { postgresUuid } from "../../common/schemas.js";
 
 export const GENDERS = ["male", "female", "other"] as const;
@@ -100,6 +101,11 @@ export const profileUpdateSchema = z
     }
   });
 
+/** PUT /profile/me/progression — null clears it (back to no progression). */
+export const progressionUpdateSchema = z.object({
+  progression: progressionSettingsSchema.nullable(),
+});
+
 export const profileListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
   offset: z.coerce.number().int().min(0).default(0),
@@ -123,6 +129,7 @@ export type Gender = (typeof GENDERS)[number];
 export type TrainingGoal = (typeof TRAINING_GOALS)[number];
 export type ExperienceLevel = (typeof EXPERIENCE_LEVELS)[number];
 export type ProfileUpdateInput = z.infer<typeof profileUpdateSchema>;
+export type ProgressionUpdateInput = z.infer<typeof progressionUpdateSchema>;
 export type ProfileListQuery = z.infer<typeof profileListQuerySchema>;
 export type HandleAvailabilityQuery = z.infer<typeof handleAvailabilityQuerySchema>;
 export type UserSearchQuery = z.infer<typeof userSearchQuerySchema>;

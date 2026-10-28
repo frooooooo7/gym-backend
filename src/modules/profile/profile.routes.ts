@@ -13,6 +13,7 @@ import {
   handleAvailabilityQuerySchema,
   profileListQuerySchema,
   profileUpdateSchema,
+  progressionUpdateSchema,
   userIdParamsSchema,
   userSearchQuerySchema,
 } from "./profile.schemas.js";
@@ -27,6 +28,20 @@ profileRouter.patch(
   writeLimiter,
   validateRequest({ body: profileUpdateSchema }),
   profileController.updateMe,
+);
+
+profileRouter.get(
+  "/profile/me/progression",
+  requireAuth,
+  profileController.getProgression,
+);
+
+profileRouter.put(
+  "/profile/me/progression",
+  requireAuth,
+  writeLimiter,
+  validateRequest({ body: progressionUpdateSchema }),
+  profileController.updateProgression,
 );
 
 profileRouter.get(

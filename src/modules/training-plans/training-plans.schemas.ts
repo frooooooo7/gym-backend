@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { progressionSettingsSchema } from "../../common/progression.js";
 import {
   colorKey,
   distanceMeters,
@@ -72,6 +73,8 @@ export const trainingPlanBodySchema = z.object({
     .max(20, "invalid_progression_step")
     .optional()
     .nullable(),
+  // Brak pola (starszy klient) zostawia metodę planu; null = jak w ustawieniach.
+  progression: progressionSettingsSchema.nullable().optional(),
   highlightPlanColor: z.boolean().optional().default(true),
   showRir: z.boolean().optional().default(true),
   showTempo: z.boolean().optional().default(true),

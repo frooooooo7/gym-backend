@@ -271,6 +271,7 @@ describe("training plans routes", () => {
           highlight_plan_color: false,
           show_rir: true,
           show_tempo: false,
+          progression: { method: "double", unit: "kg", step: 2 },
         },
         { rest_seconds: 180, superset_group: "A" },
       );
@@ -287,12 +288,23 @@ describe("training plans routes", () => {
           progressionStepKg: 1.25,
           highlightPlanColor: false,
           showTempo: false,
+          progression: { method: "double", step: 2 },
           exercises: [{ ...validBody.exercises[0], restSeconds: 180, supersetGroup: "A" }],
         });
 
       expect(res.status).toBe(201);
       expect(paramsOf("INSERT INTO training_plans").slice(5)).toEqual([
-        90, "sky", "bolt", "strength", 1.25, false, true, false, null,
+        90, "sky", "bolt", "strength", 1.25, false, true, false, null, true,
+        JSON.stringify({
+          method: "double",
+          unit: "kg",
+          step: 2,
+          legStep: null,
+          percent: 2.5,
+          rirThreshold: 2,
+          sessionsToIncrease: 1,
+          deload: false,
+        }),
       ]);
       expect(paramsOf("INSERT INTO training_plan_exercises").slice(5)).toEqual([180, "A"]);
       expect(res.body).toMatchObject({
@@ -304,6 +316,7 @@ describe("training plans routes", () => {
         highlightPlanColor: false,
         showRir: true,
         showTempo: false,
+        progression: { method: "double", unit: "kg", step: 2, sessionsToIncrease: 1 },
       });
       expect(res.body.exercises[0]).toMatchObject({ restSeconds: 180, supersetGroup: "A" });
     });
@@ -324,10 +337,11 @@ describe("training plans routes", () => {
 
       expect(res.status).toBe(201);
       expect(paramsOf("INSERT INTO training_plans").slice(5)).toEqual([
-        120, null, null, null, null, true, true, true, null,
+        120, null, null, null, null, true, true, true, null, false, null,
       ]);
       expect(paramsOf("INSERT INTO training_plan_exercises").slice(5)).toEqual([null, null]);
       expect(res.body.progressionStepKg).toBeNull();
+      expect(res.body.progression).toBeNull();
     });
 
     it.each([
@@ -335,6 +349,8 @@ describe("training plans routes", () => {
       [{ colorKey: "Sky Blue" }, "invalid_color_key"],
       [{ iconKey: "<svg>" }, "invalid_icon_key"],
       [{ progressionStepKg: 0 }, "invalid_progression_step"],
+      [{ progression: { method: "magic" } }, "invalid_progression_method"],
+      [{ progression: { method: "fixed", step: 0 } }, "invalid_progression_step"],
       [{ exercises: [{ ...validBody.exercises[0], supersetGroup: "AB" }] }, "invalid_superset_group"],
       [{ exercises: [{ ...validBody.exercises[0], restSeconds: -5 }] }, "invalid_rest_seconds"],
     ])("rejects %j with %s", async (patch, error) => {
@@ -389,7 +405,7 @@ describe("training plans routes", () => {
 
       expect(res.status).toBe(201);
       // Kopia: prywatna, z autorem i bez jego ciężarów.
-      expect(paramsOf("INSERT INTO training_plans").slice(-2)).toEqual([PLAN_ID, AUTHOR_ID]);
+      expect(paramsOf("INSERT INTO training_plans").slice(-3, -1)).toEqual([PLAN_ID, AUTHOR_ID]);
       expect(paramsOf("INSERT INTO training_plan_sets")[3]).toBeNull();
       expect(paramsOf("SET copy_count = copy_count + 1")).toEqual([PLAN_ID]);
       expect(res.body).toMatchObject({

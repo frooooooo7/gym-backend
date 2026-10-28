@@ -450,6 +450,97 @@ describe("profile routes", () => {
     expect(findCall("UPDATE users")?.[1]).toEqual([USER_ID, null]);
   });
 
+  it("GET /profile/me/progression returns null when never set", async () => {
+    whenSqlContains({
+      "SELECT progression_settings": { rows: [{ progression_settings: null }] },
+    });
+
+    const res = await request(app).get("/profile/me/progression").set(authHeaders());
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ progression: null });
+  });
+
+  it("GET /profile/me/progression fills missing fields with defaults", async () => {
+    whenSqlContains({
+      "SELECT progression_settings": {
+        rows: [{ progression_settings: { method: "fixed", unit: "lb", step: 5 } }],
+      },
+    });
+
+    const res = await request(app).get("/profile/me/progression").set(authHeaders());
+
+    expect(res.body.progression).toEqual({
+      method: "fixed",
+      unit: "lb",
+      step: 5,
+      legStep: null,
+      percent: 2.5,
+      rirThreshold: 2,
+      sessionsToIncrease: 1,
+      deload: false,
+    });
+  });
+
+  it("PUT /profile/me/progression stores the settings and clears them with null", async () => {
+    const settings = {
+      method: "percent",
+      unit: "kg",
+      step: 1.25,
+      legStep: 5,
+      percent: 2.5,
+      rirThreshold: 2,
+      sessionsToIncrease: 2,
+      deload: true,
+    };
+    whenSqlContains({
+      "UPDATE users SET progression_settings": {
+        rows: [{ progression_settings: settings }],
+      },
+    });
+
+    const res = await request(app)
+      .put("/profile/me/progression")
+      .set(authHeaders())
+      .send({ progression: { ...settings, unknown: 1 } });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ progression: settings });
+    expect(findCall("UPDATE users SET progression_settings")?.[1]).toEqual([
+      USER_ID,
+      JSON.stringify(settings),
+    ]);
+
+    mockQuery.mockClear();
+    whenSqlContains({
+      "UPDATE users SET progression_settings": { rows: [{ progression_settings: null }] },
+    });
+    const cleared = await request(app)
+      .put("/profile/me/progression")
+      .set(authHeaders())
+      .send({ progression: null });
+
+    expect(cleared.body).toEqual({ progression: null });
+    expect(findCall("UPDATE users SET progression_settings")?.[1]).toEqual([USER_ID, null]);
+  });
+
+  it.each([
+    [{}, "invalid_progression"],
+    [{ progression: { method: "magic" } }, "invalid_progression_method"],
+    [{ progression: { method: "fixed", step: -1 } }, "invalid_progression_step"],
+    [{ progression: { method: "percent", percent: 50 } }, "invalid_progression_percent"],
+    [{ progression: { method: "rir", rirThreshold: 9 } }, "invalid_progression_rir"],
+    [{ progression: { method: "fixed", sessionsToIncrease: 0 } }, "invalid_progression_sessions"],
+  ])("PUT /profile/me/progression rejects %j with %s", async (body, error) => {
+    const res = await request(app)
+      .put("/profile/me/progression")
+      .set(authHeaders())
+      .send(body);
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ error });
+  });
+
   it("PATCH /profile/me returns 409 handle_taken on a duplicate handle", async () => {
     mockQuery.mockImplementation((sql: string) =>
       String(sql).includes("UPDATE users")

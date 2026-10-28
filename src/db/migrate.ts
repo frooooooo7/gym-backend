@@ -782,6 +782,18 @@ const MIGRATIONS: Migration[] = [
       ON CONFLICT (id) DO NOTHING;
     `,
   },
+  {
+    // Weight progression chosen by the user (Settings → Progresja) and an
+    // optional per-plan override. NULL = never set: no progression for the
+    // account, and the account setting for the plan.
+    name: "029_progression_settings",
+    sql: `
+      ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS progression_settings JSONB;
+      ALTER TABLE training_plans
+        ADD COLUMN IF NOT EXISTS progression JSONB;
+    `,
+  },
 ];
 
 const ADVISORY_LOCK_ID = 3_742_116_919;

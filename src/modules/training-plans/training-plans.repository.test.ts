@@ -171,6 +171,9 @@ describe("trainingPlansRepository.upsert", () => {
       true,
       // isPublic: brak pola → widoczność bez zmian.
       null,
+      // progression: brak pola → metoda planu bez zmian.
+      false,
+      null,
     ]);
 
     expect(findQueryIndex("BEGIN")).toBeLessThan(
@@ -250,6 +253,8 @@ describe("trainingPlansRepository.upsert", () => {
       true,
       true,
       // isPublic: brak pola → widoczność bez zmian.
+      null,
+      // progression: brak pola → nowy plan idzie za ustawieniami konta.
       null,
     ]);
   });

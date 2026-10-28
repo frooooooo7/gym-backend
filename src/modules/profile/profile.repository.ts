@@ -127,6 +127,30 @@ export const profileRepository = {
     return rows[0] as OwnProfileRow | undefined;
   },
 
+  /** Stored progression JSON; `undefined` when the user doesn't exist. */
+  findProgression: async (userId: string): Promise<{ progression_settings: unknown } | undefined> => {
+    const pool = requirePool();
+    const { rows } = await pool.query(
+      `SELECT progression_settings FROM users WHERE id = $1`,
+      [userId],
+    );
+    return rows[0] as { progression_settings: unknown } | undefined;
+  },
+
+  updateProgression: async (
+    userId: string,
+    settings: Record<string, unknown> | null,
+  ): Promise<{ progression_settings: unknown } | undefined> => {
+    const pool = requirePool();
+    const { rows } = await pool.query(
+      `UPDATE users SET progression_settings = $2::jsonb
+       WHERE id = $1
+       RETURNING progression_settings`,
+      [userId, settings === null ? null : JSON.stringify(settings)],
+    );
+    return rows[0] as { progression_settings: unknown } | undefined;
+  },
+
   findStatsByUserId: async (userId: string): Promise<ProfileStatsRow> => {
     const pool = requirePool();
     const { rows } = await pool.query(

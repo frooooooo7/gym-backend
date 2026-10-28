@@ -4,6 +4,7 @@ import type { AuthRequest } from "../../middleware/auth.js";
 import type {
   HandleAvailabilityQuery,
   ProfileUpdateInput,
+  ProgressionUpdateInput,
 } from "./profile.schemas.js";
 import { profileService } from "./profile.service.js";
 
@@ -19,6 +20,19 @@ export const profileController = {
     const body = req.body as ProfileUpdateInput;
     const profile = await profileService.updateProfile(userId, body);
     res.status(200).json(profile);
+  }),
+
+  getProgression: asyncHandler(async (req: Request, res: Response) => {
+    const userId = (req as AuthRequest).auth.sub;
+    res.status(200).json(await profileService.getProgression(userId));
+  }),
+
+  updateProgression: asyncHandler(async (req: Request, res: Response) => {
+    const userId = (req as AuthRequest).auth.sub;
+    const body = req.body as ProgressionUpdateInput;
+    res
+      .status(200)
+      .json(await profileService.updateProgression(userId, body.progression));
   }),
 
   checkHandleAvailability: asyncHandler(async (req: Request, res: Response) => {

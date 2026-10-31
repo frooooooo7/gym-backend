@@ -38,6 +38,10 @@ import {
   ensurePostPhotosDir,
   postPhotosDir,
 } from "./modules/training-sessions/training-sessions.post-photo.js";
+import {
+  ensurePlanCoversDir,
+  planCoversDir,
+} from "./modules/training-plans/training-plans.cover.js";
 import { feedRouter } from "./modules/feed/feed.routes.js";
 import { notificationsRouter } from "./modules/notifications/notifications.routes.js";
 
@@ -168,6 +172,17 @@ export const createApp = () => {
   app.use(
     "/uploads/post-photos",
     express.static(postPhotosDir, {
+      maxAge: "365d",
+      immutable: true,
+      etag: false,
+      lastModified: false,
+    }),
+  );
+
+  ensurePlanCoversDir();
+  app.use(
+    "/uploads/plan-covers",
+    express.static(planCoversDir, {
       maxAge: "365d",
       immutable: true,
       etag: false,

@@ -1,8 +1,18 @@
 import { AppError } from "../../common/errors.js";
+import {
+  discardStoredImage,
+  removeManagedImage,
+  storeImage,
+  toWebp,
+} from "../../common/image-upload.js";
 import { progressionOf } from "../../common/progression.js";
 import { feedRepository } from "../feed/feed.repository.js";
 import { profileRepository } from "../profile/profile.repository.js";
 import { trainingHistoryRepository } from "../training-history/training-history.repository.js";
+import {
+  PLAN_COVER_MAX_DIMENSION,
+  PLAN_COVERS_PUBLIC_PREFIX,
+} from "./training-plans.cover.js";
 import type { TrainingPlanBodyInput } from "./training-plans.schemas.js";
 import {
   trainingPlansRepository,
@@ -31,6 +41,8 @@ const formatPlan = (row: TrainingPlanRow, { withWeights = true } = {}) => ({
   showRir: row.show_rir,
   showTempo: row.show_tempo,
   isPublic: row.is_public,
+  coverUrl: row.cover_url,
+  sortOrder: row.sort_order,
   copyCount: row.copy_count,
   copiedFrom:
     row.copied_from_user_id === null
@@ -108,6 +120,9 @@ const toCopySource = (
   };
 };
 
+const removeCover = (url: string | null) =>
+  removeManagedImage(url, PLAN_COVERS_PUBLIC_PREFIX);
+
 const text = (value: string | number | null) =>
   value === null ? null : String(value).trim() || null;
 
@@ -135,6 +150,39 @@ export const trainingPlansService = {
   deleteIfOwned: async (userId: string, planId: string) => {
     const deleted = await trainingPlansRepository.deleteIfOwned(userId, planId);
     if (!deleted) throw new AppError(404, "not_found_or_not_yours");
+    await removeCover(deleted.coverUrl);
+  },
+
+  /** Re-encodes the upload as WebP and makes it the plan's cover. */
+  uploadCover: async (userId: string, planId: string, upload: Buffer) => {
+    const image = await toWebp(upload, PLAN_COVER_MAX_DIMENSION);
+    const stored = await storeImage(PLAN_COVERS_PUBLIC_PREFIX, image);
+    let result: Awaited<ReturnType<typeof trainingPlansRepository.setCover>>;
+    try {
+      result = await trainingPlansRepository.setCover(
+        userId,
+        planId,
+        stored.publicPath,
+      );
+    } catch (e) {
+      await discardStoredImage(stored);
+      throw e;
+    }
+    if (!result) {
+      await discardStoredImage(stored);
+      throw new AppError(404, "not_found_or_not_yours");
+    }
+    if (result.previousUrl !== stored.publicPath) {
+      await removeCover(result.previousUrl);
+    }
+    return formatPlan(result.row);
+  },
+
+  deleteCover: async (userId: string, planId: string) => {
+    const result = await trainingPlansRepository.setCover(userId, planId, null);
+    if (!result) throw new AppError(404, "not_found_or_not_yours");
+    await removeCover(result.previousUrl);
+    return formatPlan(result.row);
   },
 
   /** Plany widoczne na profilu osoby. */

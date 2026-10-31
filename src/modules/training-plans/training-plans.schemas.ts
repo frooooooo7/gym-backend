@@ -80,6 +80,8 @@ export const trainingPlanBodySchema = z.object({
   showTempo: z.boolean().optional().default(true),
   // Brak pola (starszy klient) zostawia widoczność, jaka była.
   isPublic: z.boolean().optional(),
+  // Miejsce planu na liście (0 = pierwszy); brak pola zostawia je bez zmian.
+  sortOrder: z.number().int().min(0).max(100000).optional(),
 });
 
 /** Kopia cudzego planu albo planu z posta; clientId robi ją idempotentną. */

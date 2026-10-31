@@ -794,6 +794,14 @@ const MIGRATIONS: Migration[] = [
         ADD COLUMN IF NOT EXISTS progression JSONB;
     `,
   },
+  {
+    name: "030_plan_cover_and_sort_order",
+    sql: `
+      ALTER TABLE training_plans
+        ADD COLUMN IF NOT EXISTS cover_url TEXT,
+        ADD COLUMN IF NOT EXISTS sort_order INTEGER;
+    `,
+  },
 ];
 
 const ADVISORY_LOCK_ID = 3_742_116_919;

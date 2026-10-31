@@ -109,4 +109,42 @@ export const trainingPlansController = {
     );
     res.status(created ? 201 : 200).json(plan);
   }),
+
+  uploadCover: asyncHandler(async (req: Request, res: Response) => {
+    const parsedParams = uuidParamsSchema.safeParse(req.params);
+    if (!parsedParams.success) {
+      res
+        .status(400)
+        .json({ error: firstZodMessage(parsedParams.error.issues) });
+      return;
+    }
+    const file = req.file;
+    if (!file) {
+      res.status(400).json({ error: "missing_image" });
+      return;
+    }
+    const userId = (req as AuthRequest).auth.sub;
+    const plan = await trainingPlansService.uploadCover(
+      userId,
+      parsedParams.data.id,
+      file.buffer,
+    );
+    res.status(200).json(plan);
+  }),
+
+  deleteCover: asyncHandler(async (req: Request, res: Response) => {
+    const parsedParams = uuidParamsSchema.safeParse(req.params);
+    if (!parsedParams.success) {
+      res
+        .status(400)
+        .json({ error: firstZodMessage(parsedParams.error.issues) });
+      return;
+    }
+    const userId = (req as AuthRequest).auth.sub;
+    const plan = await trainingPlansService.deleteCover(
+      userId,
+      parsedParams.data.id,
+    );
+    res.status(200).json(plan);
+  }),
 };

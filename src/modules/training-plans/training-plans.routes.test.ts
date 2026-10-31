@@ -1,6 +1,10 @@
+import fs from "node:fs/promises";
+import path from "node:path";
 import jwt from "jsonwebtoken";
+import sharp from "sharp";
 import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { tinyImage } from "../../test/images.js";
 
 const { mockQuery, mockRelease, mockConnect, mockPool, mockGetPool } =
   vi.hoisted(() => {
@@ -503,5 +507,185 @@ describe("training plans routes", () => {
       expect(res.body.isPublic).toBe(true);
     });
   });
-});
 
+  describe("cover and sort order", () => {
+    const COVERS_DIR = path.join(process.cwd(), "uploads", "plan-covers");
+
+    const fileExists = async (p: string) =>
+      fs.access(p).then(
+        () => true,
+        () => false,
+      );
+
+    /** Echo the new cover_url back like Postgres would. */
+    const mockCoverUpdate = (previousUrl: string | null, found = true) => {
+      let stored: string | null = null;
+      mockQuery.mockImplementation((sql: string, params?: unknown[]) => {
+        const text = String(sql);
+        if (text.includes("SELECT cover_url FROM training_plans")) {
+          return Promise.resolve({
+            rows: found ? [{ cover_url: previousUrl }] : [],
+            rowCount: found ? 1 : 0,
+          });
+        }
+        if (text.includes("SET cover_url = $1")) {
+          stored = (params?.[0] as string | null) ?? null;
+          return Promise.resolve({ rows: [], rowCount: 1 });
+        }
+        if (text.includes("FROM training_plan_exercises")) {
+          return Promise.resolve({ rows: [], rowCount: 0 });
+        }
+        if (text.includes("FROM training_plans")) {
+          return Promise.resolve({
+            rows: [{ ...planRow, cover_url: stored }],
+            rowCount: 1,
+          });
+        }
+        return Promise.resolve({ rows: [], rowCount: 0 });
+      });
+    };
+
+    it("POST /cover stores a WebP, swaps the previous file and serves it", async () => {
+      await fs.mkdir(COVERS_DIR, { recursive: true });
+      const previousName = `test-previous-${Date.now()}.webp`;
+      const previousPath = path.join(COVERS_DIR, previousName);
+      await fs.writeFile(previousPath, "old");
+      mockCoverUpdate(`/uploads/plan-covers/${previousName}`);
+
+      const res = await request(app)
+        .post(`/training-plans/${PLAN_ID}/cover`)
+        .set(authHeaders())
+        .attach("photo", await tinyImage("jpeg", 2400), {
+          filename: "cover.jpg",
+          contentType: "image/jpeg",
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.coverUrl).toMatch(
+        /^\/uploads\/plan-covers\/[0-9a-f-]{36}\.webp$/,
+      );
+      const storedPath = path.join(
+        COVERS_DIR,
+        path.basename(res.body.coverUrl as string),
+      );
+      try {
+        expect(await fileExists(storedPath)).toBe(true);
+        expect(await fileExists(previousPath)).toBe(false);
+        const meta = await sharp(await fs.readFile(storedPath)).metadata();
+        expect(meta.format).toBe("webp");
+        expect(Math.max(meta.width ?? 0, meta.height ?? 0)).toBe(1600);
+        const served = await request(app).get(res.body.coverUrl as string);
+        expect(served.status).toBe(200);
+      } finally {
+        await fs.rm(storedPath, { force: true });
+        await fs.rm(previousPath, { force: true });
+      }
+    });
+
+    it("POST /cover returns 404 and keeps nothing on disk for someone else's plan", async () => {
+      await fs.mkdir(COVERS_DIR, { recursive: true });
+      const before = new Set(await fs.readdir(COVERS_DIR));
+      mockCoverUpdate(null, false);
+
+      const res = await request(app)
+        .post(`/training-plans/${PLAN_ID}/cover`)
+        .set(authHeaders())
+        .attach("photo", await tinyImage("png", 64), {
+          filename: "cover.png",
+          contentType: "image/png",
+        });
+
+      expect(res.status).toBe(404);
+      const after = await fs.readdir(COVERS_DIR);
+      expect(after.filter((name) => !before.has(name))).toEqual([]);
+    });
+
+    it("POST /cover rejects a request without a file", async () => {
+      mockCoverUpdate(null);
+      const res = await request(app)
+        .post(`/training-plans/${PLAN_ID}/cover`)
+        .set(authHeaders());
+      expect(res.status).toBe(400);
+      expect(res.body).toMatchObject({ error: "missing_image" });
+    });
+
+    it("DELETE /cover clears the cover and removes the file", async () => {
+      await fs.mkdir(COVERS_DIR, { recursive: true });
+      const previousName = `test-delete-${Date.now()}.webp`;
+      const previousPath = path.join(COVERS_DIR, previousName);
+      await fs.writeFile(previousPath, "old");
+      mockCoverUpdate(`/uploads/plan-covers/${previousName}`);
+
+      const res = await request(app)
+        .delete(`/training-plans/${PLAN_ID}/cover`)
+        .set(authHeaders());
+
+      expect(res.status).toBe(200);
+      expect(res.body.coverUrl).toBeNull();
+      expect(await fileExists(previousPath)).toBe(false);
+    });
+
+    it("DELETE /training-plans/:id removes the cover file", async () => {
+      await fs.mkdir(COVERS_DIR, { recursive: true });
+      const name = `test-plan-delete-${Date.now()}.webp`;
+      const filePath = path.join(COVERS_DIR, name);
+      await fs.writeFile(filePath, "old");
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ cover_url: `/uploads/plan-covers/${name}` }],
+        rowCount: 1,
+      });
+
+      const res = await request(app)
+        .delete(`/training-plans/${PLAN_ID}`)
+        .set(authHeaders());
+
+      expect(res.status).toBe(204);
+      expect(await fileExists(filePath)).toBe(false);
+    });
+
+    it("PUT stores sortOrder and returns it with the cover", async () => {
+      whenSqlContains({
+        "SELECT id FROM exercises": { rows: [{ id: EXERCISE_ID }] },
+        "UPDATE training_plans": { rows: [], rowCount: 1 },
+        "WHERE id = $1 AND user_id = $2": {
+          rows: [{ ...planRow, sort_order: 2, cover_url: "/uploads/plan-covers/x.webp" }],
+        },
+      });
+
+      const res = await request(app)
+        .put(`/training-plans/${PLAN_ID}`)
+        .set(authHeaders())
+        .send({ ...validBody, sortOrder: 2 });
+
+      expect(res.status).toBe(200);
+      const sortCall = mockQuery.mock.calls.find((call) =>
+        String(call[0]).includes("SET sort_order = $1"),
+      );
+      expect(sortCall?.[1]).toEqual([2, PLAN_ID]);
+      expect(res.body).toMatchObject({
+        sortOrder: 2,
+        coverUrl: "/uploads/plan-covers/x.webp",
+      });
+    });
+
+    it("PUT leaves the position alone when an older client omits sortOrder", async () => {
+      whenSqlContains({
+        "SELECT id FROM exercises": { rows: [{ id: EXERCISE_ID }] },
+        "UPDATE training_plans": { rows: [], rowCount: 1 },
+        "WHERE id = $1 AND user_id = $2": { rows: [planRow] },
+      });
+
+      const res = await request(app)
+        .put(`/training-plans/${PLAN_ID}`)
+        .set(authHeaders())
+        .send(validBody);
+
+      expect(res.status).toBe(200);
+      expect(
+        mockQuery.mock.calls.some((call) =>
+          String(call[0]).includes("SET sort_order = $1"),
+        ),
+      ).toBe(false);
+    });
+  });
+});

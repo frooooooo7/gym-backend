@@ -57,6 +57,8 @@ export interface TrainingPlanRow {
   copied_from_user_id: string | null;
   copied_from_handle: string | null;
   copy_count: number;
+  cover_url: string | null;
+  sort_order: number | null;
   created_at: Date;
   updated_at: Date;
   exercises: TrainingPlanExerciseRow[];
@@ -65,7 +67,8 @@ export interface TrainingPlanRow {
 const PLAN_COLUMNS = `id, client_id, user_id, name, note, selected_days,
   default_rest_seconds, color_key, icon_key, goal, progression_step_kg,
   progression, highlight_plan_color, show_rir, show_tempo, is_public,
-  copied_from_plan_id, copied_from_user_id, copy_count, created_at, updated_at,
+  copied_from_plan_id, copied_from_user_id, copy_count, cover_url, sort_order,
+  created_at, updated_at,
   (SELECT u.handle FROM users u WHERE u.id = training_plans.copied_from_user_id)
     AS copied_from_handle`;
 
@@ -85,6 +88,19 @@ const progressionParams = (body: TrainingPlanBodyInput) => [
   body.progression !== undefined,
   body.progression == null ? null : JSON.stringify(body.progression),
 ];
+
+/** Brak pola (starszy klient) zostawia miejsce planu na liście. */
+const applySortOrder = async (
+  client: PoolClient,
+  planId: string,
+  body: TrainingPlanBodyInput,
+) => {
+  if (body.sortOrder === undefined) return;
+  await client.query("UPDATE training_plans SET sort_order = $1 WHERE id = $2", [
+    body.sortOrder,
+    planId,
+  ]);
+};
 
 type PlanBodyExercise = TrainingPlanBodyInput["exercises"][number];
 
@@ -229,7 +245,7 @@ const loadPlansWhere = async (
     `SELECT ${PLAN_COLUMNS}
      FROM training_plans
      WHERE ${where}
-     ORDER BY updated_at DESC, created_at DESC`,
+     ORDER BY sort_order ASC NULLS FIRST, updated_at DESC, created_at DESC`,
     params,
   );
   if (planRows.length === 0) return [];
@@ -459,6 +475,7 @@ export const trainingPlansRepository = {
       }
 
       await replaceChildren(client, planId, body);
+      await applySortOrder(client, planId, body);
       const row = await loadPlan(client, userId, planId);
       if (!row) throw new AppError(404, "not_found_or_not_yours");
       await client.query("COMMIT");
@@ -508,6 +525,7 @@ export const trainingPlansRepository = {
         return null;
       }
       await replaceChildren(client, planId, body);
+      await applySortOrder(client, planId, body);
       const row = await loadPlan(client, userId, planId);
       await client.query("COMMIT");
       return row;
@@ -654,12 +672,58 @@ export const trainingPlansRepository = {
     }
   },
 
-  deleteIfOwned: async (userId: string, planId: string): Promise<boolean> => {
+  /** Usuwa plan; zwraca adres jego okładki (do skasowania pliku) albo `undefined`, gdy planu nie ma. */
+  deleteIfOwned: async (
+    userId: string,
+    planId: string,
+  ): Promise<{ coverUrl: string | null } | undefined> => {
     const pool = requirePool();
-    const { rowCount } = await pool.query(
-      "DELETE FROM training_plans WHERE id = $1 AND user_id = $2",
+    const { rows, rowCount } = await pool.query(
+      `DELETE FROM training_plans WHERE id = $1 AND user_id = $2
+       RETURNING cover_url`,
       [planId, userId],
     );
-    return !!rowCount;
+    if (!rowCount) return undefined;
+    return { coverUrl: (rows[0]?.cover_url as string | null) ?? null };
+  },
+
+  /** Ustawia (albo czyści) okładkę planu; zwraca plan i poprzedni adres okładki. */
+  setCover: async (
+    userId: string,
+    planId: string,
+    coverUrl: string | null,
+  ): Promise<{ row: TrainingPlanRow; previousUrl: string | null } | null> => {
+    const pool = requirePool();
+    const client = await pool.connect();
+    let releaseError: Error | undefined;
+    try {
+      await client.query("BEGIN");
+      const { rows: previous } = await client.query(
+        `SELECT cover_url FROM training_plans
+         WHERE id = $1 AND user_id = $2
+         FOR UPDATE`,
+        [planId, userId],
+      );
+      if (previous.length === 0) {
+        await client.query("ROLLBACK");
+        return null;
+      }
+      await client.query(
+        "UPDATE training_plans SET cover_url = $1 WHERE id = $2 AND user_id = $3",
+        [coverUrl, planId, userId],
+      );
+      const row = await loadPlan(client, userId, planId);
+      await client.query("COMMIT");
+      if (!row) return null;
+      return {
+        row,
+        previousUrl: (previous[0].cover_url as string | null) ?? null,
+      };
+    } catch (e) {
+      releaseError = await rollbackQuietly(client);
+      throw e;
+    } finally {
+      client.release(releaseError);
+    }
   },
 };

@@ -3,7 +3,13 @@ import { DISTANCE_UNITS, TRACKING_TYPES } from "../../common/schemas.js";
 
 export { DISTANCE_UNITS, TRACKING_TYPES };
 
-export const VALID_MUSCLES = [
+/**
+ * Grupy zapisane od pierwszego seeda. Trzy z nich (back, legs, shoulders) są
+ * zbiorcze: nie mówią, który mięsień regionu pracuje. Starsze ćwiczenia
+ * użytkowników i snapshoty sesji mają właśnie takie tagi, więc zostają
+ * dozwolone.
+ */
+export const COARSE_MUSCLES = [
   "chest",
   "back",
   "legs",
@@ -13,6 +19,41 @@ export const VALID_MUSCLES = [
   "abs",
   "glutes",
 ] as const;
+
+/** Konkretne mięśnie; każdy należy do jednej grupy zbiorczej (albo jest nią). */
+export const GRANULAR_MUSCLES = [
+  "traps",
+  "lats",
+  "rhomboids",
+  "lowerBack",
+  "frontDelts",
+  "sideDelts",
+  "rearDelts",
+  "forearms",
+  "obliques",
+  "quads",
+  "hamstrings",
+  "calves",
+  "adductors",
+] as const;
+
+export const VALID_MUSCLES = [...COARSE_MUSCLES, ...GRANULAR_MUSCLES] as const;
+
+/**
+ * Filtr biblioteki po grupie zbiorczej obejmuje też jej konkretne mięśnie:
+ * ćwiczenie z tagami `lats` + `biceps` ma się pokazać pod „Plecy”.
+ */
+export const MUSCLE_FILTER_GROUPS: Readonly<Record<string, readonly string[]>> =
+  {
+    back: ["back", "traps", "lats", "rhomboids", "lowerBack"],
+    legs: ["legs", "quads", "hamstrings", "calves", "adductors"],
+    shoulders: ["shoulders", "frontDelts", "sideDelts", "rearDelts"],
+    abs: ["abs", "obliques"],
+  };
+
+/** Wartości `muscles`, które pasują do filtra `muscle` (sam filtr, gdy nie jest grupą). */
+export const musclesMatchingFilter = (muscle: string): readonly string[] =>
+  MUSCLE_FILTER_GROUPS[muscle] ?? [muscle];
 
 export const VALID_CATEGORIES = [
   "compound",

@@ -1,6 +1,7 @@
 import { AppError } from "../../common/errors.js";
 import { requirePool } from "../../db/require-pool.js";
 import { containsPattern } from "../../db/sql-fragments.js";
+import { musclesMatchingFilter } from "./exercises.schemas.js";
 import type {
   DistanceUnit,
   ListQueryInput,
@@ -62,8 +63,8 @@ export const exercisesRepository = {
     }
 
     if (muscle !== "all") {
-      params.push(muscle);
-      conditions.push(`e.muscles @> ARRAY[$${params.length}]::text[]`);
+      params.push(musclesMatchingFilter(muscle));
+      conditions.push(`e.muscles && $${params.length}::text[]`);
     }
 
     switch (filter) {

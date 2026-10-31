@@ -139,7 +139,7 @@ Auth column: 🔒 = `Authorization: Bearer <jwt>` required.
 | POST | `/auth/logout-all` | 🔒 | New token, revokes other tokens. |
 | DELETE | `/auth/me` | 🔒 | Delete account, body `{ password }` → 204. |
 | POST | `/auth/delete-account` | 🔒 | Same as `DELETE /auth/me`, for proxies that drop DELETE bodies. Shares its limiter. |
-| GET | `/exercises` | 🔒 | List/search (`q`, `muscle`, `filter`, `limit`, `offset`). 300/min per IP on `/exercises*`. |
+| GET | `/exercises` | 🔒 | List/search (`q`, `muscle`, `filter`, `limit`, `offset`). `muscle` accepts any value from [Muscle tags](#muscle-tags); a group (`back`, `legs`, `shoulders`, `abs`) also matches its specific muscles. 300/min per IP on `/exercises*`. |
 | POST | `/exercises` | 🔒 | Create custom exercise (upsert by `clientId`). |
 | PUT | `/exercises/:id` | 🔒 | Update own exercise. |
 | DELETE | `/exercises/:id` | 🔒 | Delete own exercise. |
@@ -441,6 +441,15 @@ local session and its queued operations, and **don't** fall back from `PUT` to `
 - Match local sessions by `clientId` first, then `id`. For a session deleted by client id before it
   reached the server, `id` is a random uuid that never belonged to a session.
 - `PUT` / `POST` validate `finishedAt >= startedAt` (equal is fine) → `400 invalid_date_range`.
+
+## Muscle tags
+
+An exercise's `muscles` list is ordered: the first value is the muscle the exercise targets, the rest assist. Allowed values:
+
+- Groups: `chest`, `back`, `legs`, `shoulders`, `biceps`, `triceps`, `abs`, `glutes`. `back`, `legs` and `shoulders` don't say which muscle works, so a client lights the whole region.
+- Specific muscles: `traps`, `lats`, `rhomboids`, `lowerBack` (back), `frontDelts`, `sideDelts`, `rearDelts` (shoulders), `forearms` (arms), `obliques` (core), `quads`, `hamstrings`, `calves`, `adductors` (legs).
+
+System exercises use specific muscles (migration `030_granular_muscle_tags`). User exercises and session snapshots created earlier keep their group tags, which stay valid. The `muscle` filter of `GET /exercises` expands a group to its specific muscles (`back` also matches `lats`, `traps`, …; `abs` matches `obliques`).
 
 ## Set types and exercise notes
 

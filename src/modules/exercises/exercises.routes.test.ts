@@ -90,6 +90,14 @@ describe("GET /exercises", () => {
     expect(res.status).toBe(400);
   });
 
+  it("accepts a specific muscle as the filter", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    const res = await request(app)
+      .get("/exercises?muscle=lats")
+      .set(authHeaders());
+    expect(res.status).toBe(200);
+  });
+
   it("returns empty array when no exercises exist", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
     const res = await request(app).get("/exercises").set(authHeaders());
@@ -260,6 +268,24 @@ describe("POST /exercises", () => {
       .set(authHeaders())
       .send({ name: "Test", muscles: ["abs"], category: "no_such_category" });
     expect(res.status).toBe(400);
+  });
+
+  it("accepts specific muscles alongside the coarse groups", async () => {
+    const row = makeExerciseRow({
+      created_by: USER_ID,
+      muscles: ["quads", "glutes", "rearDelts"],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [row] });
+    const res = await request(app)
+      .post("/exercises")
+      .set(authHeaders())
+      .send({
+        name: "Test",
+        muscles: ["quads", "glutes", "rearDelts"],
+        category: "compound",
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.muscles).toEqual(["quads", "glutes", "rearDelts"]);
   });
 
   it("returns 400 when muscles contain invalid value", async () => {

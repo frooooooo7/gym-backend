@@ -39,6 +39,44 @@ describe("exercisesRepository.list", () => {
     const [, params] = mockQuery.mock.calls[0] as [string, unknown[]];
     expect(params[0]).toBe(uid);
   });
+
+  it("a coarse muscle filter also matches its specific muscles", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    await exercisesRepository.list("aaaaaaaa-0000-0000-0000-000000000099", {
+      ...baseListQuery,
+      muscle: "back",
+    });
+    const [sql, params] = mockQuery.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain("e.muscles && $2::text[]");
+    expect(params[1]).toEqual(["back", "traps", "lats", "rhomboids", "lowerBack"]);
+  });
+
+  it("a specific or ungrouped muscle filter matches only itself", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    await exercisesRepository.list("aaaaaaaa-0000-0000-0000-000000000099", {
+      ...baseListQuery,
+      muscle: "lats",
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    await exercisesRepository.list("aaaaaaaa-0000-0000-0000-000000000099", {
+      ...baseListQuery,
+      muscle: "chest",
+    });
+    const first = mockQuery.mock.calls[0] as [string, unknown[]];
+    const second = mockQuery.mock.calls[1] as [string, unknown[]];
+    expect(first[1][1]).toEqual(["lats"]);
+    expect(second[1][1]).toEqual(["chest"]);
+  });
+
+  it("without a muscle filter no muscle predicate is added", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    await exercisesRepository.list(
+      "aaaaaaaa-0000-0000-0000-000000000099",
+      baseListQuery,
+    );
+    const [sql] = mockQuery.mock.calls[0] as [string];
+    expect(sql).not.toContain("e.muscles &&");
+  });
 });
 
 describe("exercisesRepository.insertUserExercise", () => {

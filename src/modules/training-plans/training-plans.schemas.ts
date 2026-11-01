@@ -80,9 +80,21 @@ export const trainingPlanBodySchema = z.object({
   showTempo: z.boolean().optional().default(true),
   // Brak pola (starszy klient) zostawia widoczność, jaka była.
   isPublic: z.boolean().optional(),
-  // Miejsce planu na liście (0 = pierwszy); brak pola zostawia je bez zmian.
-  sortOrder: z.number().int().min(0).max(100000).optional(),
 });
+
+/**
+ * Kolejność planów na liście: id od pierwszego do ostatniego. Osobno od treści
+ * planu, żeby przesunięcie nie nadpisywało edycji zrobionych na innym
+ * urządzeniu.
+ */
+export const planOrderBodySchema = z.object({
+  ids: z
+    .array(postgresUuid)
+    .max(500)
+    .refine((ids) => new Set(ids).size === ids.length, "duplicate_ids"),
+});
+
+export type PlanOrderBodyInput = z.infer<typeof planOrderBodySchema>;
 
 /** Kopia cudzego planu albo planu z posta; clientId robi ją idempotentną. */
 export const copyPlanBodySchema = z.object({

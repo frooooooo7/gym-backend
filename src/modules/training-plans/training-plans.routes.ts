@@ -19,6 +19,13 @@ trainingPlansRouter.post(
   writeLimiter,
   trainingPlansController.create,
 );
+// Przed "/training-plans/:id", żeby "order" nie trafiło w parametr id.
+trainingPlansRouter.put(
+  "/training-plans/order",
+  requireAuth,
+  writeLimiter,
+  trainingPlansController.setOrder,
+);
 trainingPlansRouter.put(
   "/training-plans/:id",
   requireAuth,

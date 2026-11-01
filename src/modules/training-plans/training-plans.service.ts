@@ -147,6 +147,10 @@ export const trainingPlansService = {
     return formatPlan(row);
   },
 
+  setOrder: async (userId: string, ids: string[]) => {
+    await trainingPlansRepository.setOrder(userId, ids);
+  },
+
   deleteIfOwned: async (userId: string, planId: string) => {
     const deleted = await trainingPlansRepository.deleteIfOwned(userId, planId);
     if (!deleted) throw new AppError(404, "not_found_or_not_yours");

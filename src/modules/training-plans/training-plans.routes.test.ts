@@ -643,7 +643,43 @@ describe("training plans routes", () => {
       expect(await fileExists(filePath)).toBe(false);
     });
 
-    it("PUT stores sortOrder and returns it with the cover", async () => {
+    it("PUT /training-plans/order writes the positions in one statement", async () => {
+      const other = "22222222-2222-4222-8222-222222222222";
+      mockQuery.mockResolvedValue({ rows: [], rowCount: 2 });
+
+      const res = await request(app)
+        .put("/training-plans/order")
+        .set(authHeaders())
+        .send({ ids: [PLAN_ID, other] });
+
+      expect(res.status).toBe(204);
+      const call = mockQuery.mock.calls.find((c) =>
+        String(c[0]).includes("SET sort_order = v.ord - 1"),
+      );
+      expect(call?.[1]).toEqual([[PLAN_ID, other], expect.any(String)]);
+      expect(String(call?.[0])).toContain("t.user_id = $2");
+    });
+
+    it("PUT /training-plans/order rejects duplicates and bad ids", async () => {
+      const dup = await request(app)
+        .put("/training-plans/order")
+        .set(authHeaders())
+        .send({ ids: [PLAN_ID, PLAN_ID] });
+      expect(dup.status).toBe(400);
+
+      const bad = await request(app)
+        .put("/training-plans/order")
+        .set(authHeaders())
+        .send({ ids: ["nope"] });
+      expect(bad.status).toBe(400);
+      expect(
+        mockQuery.mock.calls.some((c) =>
+          String(c[0]).includes("SET sort_order"),
+        ),
+      ).toBe(false);
+    });
+
+    it("PUT /training-plans/:id never touches the position", async () => {
       whenSqlContains({
         "SELECT id FROM exercises": { rows: [{ id: EXERCISE_ID }] },
         "UPDATE training_plans": { rows: [], rowCount: 1 },
@@ -655,37 +691,16 @@ describe("training plans routes", () => {
       const res = await request(app)
         .put(`/training-plans/${PLAN_ID}`)
         .set(authHeaders())
-        .send({ ...validBody, sortOrder: 2 });
+        .send({ ...validBody, sortOrder: 9 });
 
       expect(res.status).toBe(200);
-      const sortCall = mockQuery.mock.calls.find((call) =>
-        String(call[0]).includes("SET sort_order = $1"),
-      );
-      expect(sortCall?.[1]).toEqual([2, PLAN_ID]);
+      expect(
+        mockQuery.mock.calls.some((c) => String(c[0]).includes("SET sort_order")),
+      ).toBe(false);
       expect(res.body).toMatchObject({
         sortOrder: 2,
         coverUrl: "/uploads/plan-covers/x.webp",
       });
-    });
-
-    it("PUT leaves the position alone when an older client omits sortOrder", async () => {
-      whenSqlContains({
-        "SELECT id FROM exercises": { rows: [{ id: EXERCISE_ID }] },
-        "UPDATE training_plans": { rows: [], rowCount: 1 },
-        "WHERE id = $1 AND user_id = $2": { rows: [planRow] },
-      });
-
-      const res = await request(app)
-        .put(`/training-plans/${PLAN_ID}`)
-        .set(authHeaders())
-        .send(validBody);
-
-      expect(res.status).toBe(200);
-      expect(
-        mockQuery.mock.calls.some((call) =>
-          String(call[0]).includes("SET sort_order = $1"),
-        ),
-      ).toBe(false);
     });
   });
 });

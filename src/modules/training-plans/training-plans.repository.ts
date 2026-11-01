@@ -89,19 +89,6 @@ const progressionParams = (body: TrainingPlanBodyInput) => [
   body.progression == null ? null : JSON.stringify(body.progression),
 ];
 
-/** Brak pola (starszy klient) zostawia miejsce planu na liście. */
-const applySortOrder = async (
-  client: PoolClient,
-  planId: string,
-  body: TrainingPlanBodyInput,
-) => {
-  if (body.sortOrder === undefined) return;
-  await client.query("UPDATE training_plans SET sort_order = $1 WHERE id = $2", [
-    body.sortOrder,
-    planId,
-  ]);
-};
-
 type PlanBodyExercise = TrainingPlanBodyInput["exercises"][number];
 
 /** Plan do skopiowania: cudzy plan albo plan zbudowany z posta. */
@@ -475,7 +462,6 @@ export const trainingPlansRepository = {
       }
 
       await replaceChildren(client, planId, body);
-      await applySortOrder(client, planId, body);
       const row = await loadPlan(client, userId, planId);
       if (!row) throw new AppError(404, "not_found_or_not_yours");
       await client.query("COMMIT");
@@ -525,7 +511,6 @@ export const trainingPlansRepository = {
         return null;
       }
       await replaceChildren(client, planId, body);
-      await applySortOrder(client, planId, body);
       const row = await loadPlan(client, userId, planId);
       await client.query("COMMIT");
       return row;
@@ -685,6 +670,22 @@ export const trainingPlansRepository = {
     );
     if (!rowCount) return undefined;
     return { coverUrl: (rows[0]?.cover_url as string | null) ?? null };
+  },
+
+  /**
+   * Zapisuje miejsca planów użytkownika: pierwszy id dostaje 0 itd. Cudze
+   * i nieznane id są pomijane; planów spoza listy nie ruszamy.
+   */
+  setOrder: async (userId: string, ids: string[]): Promise<void> => {
+    if (ids.length === 0) return;
+    const pool = requirePool();
+    await pool.query(
+      `UPDATE training_plans t
+       SET sort_order = v.ord - 1
+       FROM unnest($1::uuid[]) WITH ORDINALITY AS v(id, ord)
+       WHERE t.id = v.id AND t.user_id = $2`,
+      [ids, userId],
+    );
   },
 
   /** Ustawia (albo czyści) okładkę planu; zwraca plan i poprzedni adres okładki. */

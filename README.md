@@ -449,7 +449,7 @@ An exercise's `muscles` list is ordered: the first value is the muscle the exerc
 - Groups: `chest`, `back`, `legs`, `shoulders`, `biceps`, `triceps`, `abs`, `glutes`. `back`, `legs` and `shoulders` don't say which muscle works, so a client lights the whole region.
 - Specific muscles: `traps`, `lats`, `rhomboids`, `lowerBack` (back), `frontDelts`, `sideDelts`, `rearDelts` (shoulders), `forearms` (arms), `obliques` (core), `quads`, `hamstrings`, `calves`, `adductors` (legs).
 
-System exercises use specific muscles (migration `030_granular_muscle_tags`). User exercises and session snapshots created earlier keep their group tags, which stay valid. The `muscle` filter of `GET /exercises` expands a group to its specific muscles (`back` also matches `lats`, `traps`, …; `abs` matches `obliques`).
+System exercises move to specific muscles in a separate migration (`031_granular_muscle_tags`), run only after the app that understands them is out. User exercises and session snapshots created earlier keep their group tags, which stay valid. The `muscle` filter of `GET /exercises` expands a group to its specific muscles (`back` also matches `lats`, `traps`, …; `abs` matches `obliques`).
 
 ## Set types and exercise notes
 

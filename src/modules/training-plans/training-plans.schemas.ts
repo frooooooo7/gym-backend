@@ -82,6 +82,20 @@ export const trainingPlanBodySchema = z.object({
   isPublic: z.boolean().optional(),
 });
 
+/**
+ * Kolejność planów na liście: id od pierwszego do ostatniego. Osobno od treści
+ * planu, żeby przesunięcie nie nadpisywało edycji zrobionych na innym
+ * urządzeniu.
+ */
+export const planOrderBodySchema = z.object({
+  ids: z
+    .array(postgresUuid)
+    .max(500)
+    .refine((ids) => new Set(ids).size === ids.length, "duplicate_ids"),
+});
+
+export type PlanOrderBodyInput = z.infer<typeof planOrderBodySchema>;
+
 /** Kopia cudzego planu albo planu z posta; clientId robi ją idempotentną. */
 export const copyPlanBodySchema = z.object({
   clientId: postgresUuid.optional(),

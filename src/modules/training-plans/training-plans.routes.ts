@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { singleImageUpload } from "../../common/image-upload.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { planCopyLimiter, writeLimiter } from "../../middleware/rate-limit.js";
 import { validateRequest } from "../../middleware/validation.js";
@@ -18,6 +19,13 @@ trainingPlansRouter.post(
   writeLimiter,
   trainingPlansController.create,
 );
+// Przed "/training-plans/:id", żeby "order" nie trafiło w parametr id.
+trainingPlansRouter.put(
+  "/training-plans/order",
+  requireAuth,
+  writeLimiter,
+  trainingPlansController.setOrder,
+);
 trainingPlansRouter.put(
   "/training-plans/:id",
   requireAuth,
@@ -29,6 +37,19 @@ trainingPlansRouter.delete(
   requireAuth,
   writeLimiter,
   trainingPlansController.destroy,
+);
+trainingPlansRouter.post(
+  "/training-plans/:id/cover",
+  requireAuth,
+  writeLimiter,
+  singleImageUpload("photo"),
+  trainingPlansController.uploadCover,
+);
+trainingPlansRouter.delete(
+  "/training-plans/:id/cover",
+  requireAuth,
+  writeLimiter,
+  trainingPlansController.deleteCover,
 );
 trainingPlansRouter.post(
   "/training-plans/:id/copy",

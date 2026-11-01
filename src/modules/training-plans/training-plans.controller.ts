@@ -4,6 +4,7 @@ import { firstZodMessage, uuidParamsSchema } from "../../common/schemas.js";
 import type { AuthRequest } from "../../middleware/auth.js";
 import {
   copyPlanBodySchema,
+  planOrderBodySchema,
   trainingPlanBodySchema,
 } from "./training-plans.schemas.js";
 import { trainingPlansService } from "./training-plans.service.js";
@@ -49,6 +50,17 @@ export const trainingPlansController = {
       parsed.data,
     );
     res.status(200).json(plan);
+  }),
+
+  setOrder: asyncHandler(async (req: Request, res: Response) => {
+    const parsed = planOrderBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: firstZodMessage(parsed.error.issues) });
+      return;
+    }
+    const userId = (req as AuthRequest).auth.sub;
+    await trainingPlansService.setOrder(userId, parsed.data.ids);
+    res.status(204).end();
   }),
 
   destroy: asyncHandler(async (req: Request, res: Response) => {
@@ -108,5 +120,43 @@ export const trainingPlansController = {
       parsed.data.clientId,
     );
     res.status(created ? 201 : 200).json(plan);
+  }),
+
+  uploadCover: asyncHandler(async (req: Request, res: Response) => {
+    const parsedParams = uuidParamsSchema.safeParse(req.params);
+    if (!parsedParams.success) {
+      res
+        .status(400)
+        .json({ error: firstZodMessage(parsedParams.error.issues) });
+      return;
+    }
+    const file = req.file;
+    if (!file) {
+      res.status(400).json({ error: "missing_image" });
+      return;
+    }
+    const userId = (req as AuthRequest).auth.sub;
+    const plan = await trainingPlansService.uploadCover(
+      userId,
+      parsedParams.data.id,
+      file.buffer,
+    );
+    res.status(200).json(plan);
+  }),
+
+  deleteCover: asyncHandler(async (req: Request, res: Response) => {
+    const parsedParams = uuidParamsSchema.safeParse(req.params);
+    if (!parsedParams.success) {
+      res
+        .status(400)
+        .json({ error: firstZodMessage(parsedParams.error.issues) });
+      return;
+    }
+    const userId = (req as AuthRequest).auth.sub;
+    const plan = await trainingPlansService.deleteCover(
+      userId,
+      parsedParams.data.id,
+    );
+    res.status(200).json(plan);
   }),
 };

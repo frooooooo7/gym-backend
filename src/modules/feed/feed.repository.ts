@@ -25,6 +25,10 @@ export interface PostRow {
   note: string | null;
   post_title: string | null;
   post_photo_url: string | null;
+  plan_color_key: string | null;
+  plan_icon_key: string | null;
+  /** Cover of the plan the session was started from; null when the plan has none or was deleted. */
+  plan_cover_url: string | null;
   started_at: Date;
   finished_at: Date | null;
   duration_sec: number;
@@ -115,6 +119,9 @@ const POST_SELECT = `
     ts.note,
     ts.post_title,
     ts.post_photo_url,
+    ts.plan_color_key,
+    ts.plan_icon_key,
+    tp.cover_url AS plan_cover_url,
     ts.started_at,
     ts.finished_at,
     ${sessionDurationSecSql("ts")} AS duration_sec,
@@ -125,6 +132,7 @@ const POST_SELECT = `
     u.avatar_url AS author_avatar_url
   FROM training_sessions ts
   JOIN users u ON u.id = ts.user_id
+  LEFT JOIN training_plans tp ON tp.id = ts.plan_id
 `;
 
 /**

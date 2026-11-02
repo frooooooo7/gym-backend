@@ -278,6 +278,36 @@ describe("GET /feed", () => {
     }
   });
 
+  it("returns the plan's cover, icon and colour with each post", async () => {
+    whenSqlContains({
+      [SQL.listFeed]: {
+        rows: [
+          postRow({
+            plan_cover_url: "/uploads/plan-covers/push.jpg",
+            plan_icon_key: "dumbbell",
+            plan_color_key: "orange",
+          }),
+          postRow({ id: SESSION_ID_2 }),
+        ],
+      },
+      ...postAggregates,
+    });
+
+    const res = await request(app).get("/feed").set(authHeaders());
+
+    expect(res.status).toBe(200);
+    expect(res.body.items[0]).toMatchObject({
+      planCoverUrl: "/uploads/plan-covers/push.jpg",
+      planIconKey: "dumbbell",
+      planColorKey: "orange",
+    });
+    // A plan without cover / appearance (or a deleted plan) gives nulls.
+    expect(res.body.items[1].planCoverUrl ?? null).toBeNull();
+    const sql = String(findCall(SQL.listFeed)?.[0]);
+    expect(sql).toContain("LEFT JOIN training_plans tp ON tp.id = ts.plan_id");
+    expect(sql).toContain("tp.cover_url AS plan_cover_url");
+  });
+
   it("lists new personal records in exercise order", async () => {
     const bests = (overrides: Record<string, unknown>) => ({
       session_id: SESSION_ID,

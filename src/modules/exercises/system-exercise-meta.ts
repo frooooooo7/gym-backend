@@ -85,7 +85,7 @@ export const SYSTEM_EXERCISE_META: Readonly<Record<string, SystemExerciseMeta>> 
   [id(1)]: m("barbell", "push_horizontal", ["bench", "bench press", "wyciskanie leżąc", "klata sztanga"], [
     "Połóż się tak, żeby oczy były pod sztangą. Stopy płasko na podłodze, łopatki ściągnięte i opuszczone.",
     "Chwyć sztangę nieco szerzej niż barki i zdejmij ją ze stojaków.",
-    "Opuść ją powoli, pod kontrolą do dolnej części klatki, łokcie pod kątem około 45° do tułowia.",
+    "Opuść ją powoli, pod kontrolą, do dolnej części klatki, łokcie pod kątem około 45° do tułowia.",
     "Wypchnij sztangę w górę do wyprostu rąk, nie odrywając pośladków od ławki.",
   ], ["Odbijanie sztangi od klatki", "Łokcie rozstawione na 90°", "Odrywanie pośladków od ławki"]),
   [id(2)]: m("bodyweight", "pull_vertical", ["podciąganie", "pull up", "pullup", "drążek"], [
@@ -102,7 +102,7 @@ export const SYSTEM_EXERCISE_META: Readonly<Record<string, SystemExerciseMeta>> 
   [id(4)]: m("dumbbell", "push_vertical", ["OHP hantle", "wyciskanie nad głowę", "shoulder press", "barki hantle"], [
     "Usiądź z oparciem lub stań, hantle na wysokości barków, przedramiona pionowo.",
     "Wypchnij hantle nad głowę do prawie pełnego wyprostu.",
-    "Opuść je powoli, pod kontrolą do wysokości uszu.",
+    "Opuść je powoli, pod kontrolą, do wysokości uszu.",
   ], ["Mocne wyginanie odcinka lędźwiowego", "Hantle ciągnięte do przodu zamiast nad głowę", "Bujanie nogami"]),
   [id(5)]: m("barbell", "hinge", ["deadlift", "martwy", "MC"], [
     "Stań ze stopami pod sztangą na szerokość bioder, chwyć ją tuż na zewnątrz goleni.",
@@ -123,7 +123,7 @@ export const SYSTEM_EXERCISE_META: Readonly<Record<string, SystemExerciseMeta>> 
   [id(8)]: m("barbell", "pull_horizontal", ["wiosło", "bent over row", "wiosłowanie", "plecy sztanga"], [
     "Pochyl tułów do około 45°, plecy proste, kolana lekko ugięte, sztanga w wyprostowanych rękach.",
     "Przyciągnij sztangę do dolnej części brzucha, łokcie za tułów.",
-    "Opuść powoli, pod kontrolą do wyprostu rąk.",
+    "Opuść powoli, pod kontrolą, do wyprostu rąk.",
   ], ["Zaokrąglone plecy", "Szarpanie tułowiem", "Sztanga ciągnięta do klatki zamiast do brzucha"]),
   [id(9)]: m("machine", "squat", ["suwnica", "leg press", "wypychanie", "prasa"], [
     "Usiądź na suwnicy, plecy oparte, stopy na platformie na szerokość barków.",
@@ -323,7 +323,7 @@ export const SYSTEM_EXERCISE_META: Readonly<Record<string, SystemExerciseMeta>> 
   [id(48)]: m("dumbbell", "push_horizontal", ["hantle na ławce", "dumbbell press", "klata hantle"], [
     "Połóż się na ławce płaskiej, hantle przy klatce.",
     "Wypchnij hantle w górę, zbliżając je nad klatką.",
-    "Opuść powoli, pod kontrolą do poziomu klatki.",
+    "Opuść powoli, pod kontrolą, do poziomu klatki.",
   ], ["Za szeroko rozstawione łokcie", "Za szybkie opuszczanie", "Odbijanie od klatki"]),
   [id(49)]: m("bodyweight", "push_horizontal", ["pompki", "push up", "pushup"], [
     "Podpór na dłoniach nieco szerzej niż barki, ciało w jednej linii.",

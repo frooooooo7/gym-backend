@@ -948,6 +948,35 @@ const MIGRATIONS: Migration[] = [
            'a1000000-0000-0000-0000-000000000014'
          )
          AND tracking_type = 'weight_reps';
+
+      -- Plany biorą typ zapisu na żywo z ćwiczenia, a plank/rozciąganie miały
+      -- cel w polu reps (np. '60'). Przenosimy go do czasu, żeby plan nie
+      -- pokazywał ćwiczenia na czas bez czasu.
+      UPDATE training_plan_sets s
+         SET duration_seconds = substring(s.reps from '^\\s*(\\d{1,5})')::int
+        FROM training_plan_exercises pe
+       WHERE pe.id = s.plan_exercise_id
+         AND pe.exercise_id IN (
+           'a1000000-0000-0000-0000-000000000012',
+           'a1000000-0000-0000-0000-000000000014'
+         )
+         AND s.duration_seconds IS NULL
+         AND s.reps ~ '^\\s*\\d{1,5}\\s*s?\\s*$'
+         AND substring(s.reps from '^\\s*(\\d{1,5})')::int BETWEEN 1 AND 86400;
+
+      -- Podbij updated_at zmienionych planów, żeby aplikacje pobrały nowy czas.
+      UPDATE training_plans
+         SET updated_at = now()
+       WHERE id IN (
+         SELECT pe.plan_id
+           FROM training_plan_exercises pe
+           JOIN training_plan_sets s ON s.plan_exercise_id = pe.id
+          WHERE pe.exercise_id IN (
+            'a1000000-0000-0000-0000-000000000012',
+            'a1000000-0000-0000-0000-000000000014'
+          )
+            AND s.duration_seconds IS NOT NULL
+       );
     `,
   },
 ];

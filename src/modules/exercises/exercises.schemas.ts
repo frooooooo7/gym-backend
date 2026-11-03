@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { DISTANCE_UNITS, TRACKING_TYPES } from "../../common/schemas.js";
+import { EQUIPMENT } from "./system-exercise-meta.js";
 
 export { DISTANCE_UNITS, TRACKING_TYPES };
 
@@ -98,6 +99,29 @@ export const upsertBodySchema = z.object({
   // Starsze klienty nie wysyłają — przy edycji zostaje zapisana wartość.
   trackingType: z.enum(TRACKING_TYPES).optional(),
   distanceUnit: z.enum(DISTANCE_UNITS).optional(),
+  // Pola opcjonalne: brak w body oznacza „bez zmian” przy edycji.
+  equipment: z.enum(EQUIPMENT).nullable().optional(),
+  aliases: z
+    .array(
+      z
+        .string()
+        .max(60)
+        .transform((s) => s.trim()),
+    )
+    .max(10)
+    .optional()
+    .transform((list) => list?.filter((s) => s.length > 0)),
+  instructions: z
+    .object({
+      steps: z.array(z.string().trim().min(1).max(300)).max(10),
+      mistakes: z.array(z.string().trim().min(1).max(200)).max(6),
+    })
+    .nullable()
+    .optional()
+    // Pusty opis zapisujemy jako brak opisu.
+    .transform((v) =>
+      v && v.steps.length === 0 && v.mistakes.length === 0 ? null : v,
+    ),
 });
 
 export type ListQueryInput = z.infer<typeof listQuerySchema>;

@@ -1,6 +1,7 @@
 import { logger, serializeError } from "../common/logger.js";
 import { getPool } from "./pool.js";
 import { syncSystemExerciseImages } from "../modules/exercises/system-exercise-images.js";
+import { syncSystemExerciseMeta } from "../modules/exercises/system-exercise-meta.js";
 
 interface Migration {
   name: string;
@@ -913,6 +914,71 @@ const MIGRATIONS: Migration[] = [
       WHERE e.id = v.id::uuid AND e.is_system = true;
     `,
   },
+  {
+    name: "032_exercise_equipment_aliases_instructions",
+    sql: `
+      -- Sprzęt, inne nazwy (szukanie), opis techniki i rodzaj ruchu (zamienniki).
+      -- Wszystko opcjonalne: starsze wersje aplikacji tych pól nie czytają.
+      -- Ćwiczenia systemowe dostają wartości przy starcie API
+      -- (syncSystemExerciseMeta), więc poprawka opisu nie wymaga migracji.
+      ALTER TABLE exercises
+        ADD COLUMN IF NOT EXISTS equipment    TEXT,
+        ADD COLUMN IF NOT EXISTS aliases      TEXT[] NOT NULL DEFAULT '{}',
+        ADD COLUMN IF NOT EXISTS instructions JSONB,
+        ADD COLUMN IF NOT EXISTS pattern      TEXT;
+
+      ALTER TABLE exercises
+        ADD CONSTRAINT exercises_equipment_check
+        CHECK (equipment IS NULL OR equipment IN (
+          'barbell','dumbbell','kettlebell','cable','machine','bodyweight','band','other'
+        ));
+    `,
+  },
+  {
+    name: "033_system_exercises_timed_tracking",
+    sql: `
+      -- Plank i rozciąganie to ćwiczenia na czas, nie ciężar × powtórzenia
+      -- (Deska bokiem już ma czas). Zmieniamy tylko ćwiczenia systemowe,
+      -- własnych użytkowników nie ruszamy.
+      UPDATE exercises
+         SET tracking_type = 'duration'
+       WHERE is_system
+         AND id IN (
+           'a1000000-0000-0000-0000-000000000012',
+           'a1000000-0000-0000-0000-000000000014'
+         )
+         AND tracking_type = 'weight_reps';
+
+      -- Plany biorą typ zapisu na żywo z ćwiczenia, a plank/rozciąganie miały
+      -- cel w polu reps (np. '60'). Przenosimy go do czasu, żeby plan nie
+      -- pokazywał ćwiczenia na czas bez czasu.
+      UPDATE training_plan_sets s
+         SET duration_seconds = substring(s.reps from '^\\s*(\\d{1,5})')::int
+        FROM training_plan_exercises pe
+       WHERE pe.id = s.plan_exercise_id
+         AND pe.exercise_id IN (
+           'a1000000-0000-0000-0000-000000000012',
+           'a1000000-0000-0000-0000-000000000014'
+         )
+         AND s.duration_seconds IS NULL
+         AND s.reps ~ '^\\s*\\d{1,5}\\s*s?\\s*$'
+         AND substring(s.reps from '^\\s*(\\d{1,5})')::int BETWEEN 1 AND 86400;
+
+      -- Podbij updated_at zmienionych planów, żeby aplikacje pobrały nowy czas.
+      UPDATE training_plans
+         SET updated_at = now()
+       WHERE id IN (
+         SELECT pe.plan_id
+           FROM training_plan_exercises pe
+           JOIN training_plan_sets s ON s.plan_exercise_id = pe.id
+          WHERE pe.exercise_id IN (
+            'a1000000-0000-0000-0000-000000000012',
+            'a1000000-0000-0000-0000-000000000014'
+          )
+            AND s.duration_seconds IS NOT NULL
+       );
+    `,
+  },
 ];
 
 const ADVISORY_LOCK_ID = 3_742_116_919;
@@ -966,9 +1032,13 @@ export const runMigrations = async (): Promise<void> => {
     try {
       await client.query("SET LOCAL statement_timeout = 0");
       const synced = await syncSystemExerciseImages(client);
+      const meta = await syncSystemExerciseMeta(client);
       await client.query("COMMIT");
       if (synced.exercises > 0 || synced.sessionExercises > 0) {
         logger.info("[migrate] synced system exercise images", { ...synced });
+      }
+      if (meta > 0) {
+        logger.info("[migrate] synced system exercise meta", { exercises: meta });
       }
     } catch (err) {
       await client.query("ROLLBACK");

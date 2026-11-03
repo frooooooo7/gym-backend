@@ -133,6 +133,33 @@ describe("GET /exercises", () => {
       clientId: null,
       trackingType: "weight_reps",
       distanceUnit: "km",
+      equipment: null,
+      aliases: [],
+      instructions: null,
+      pattern: null,
+    });
+  });
+
+  it("returns equipment, aliases, instructions and pattern when stored", async () => {
+    const instructions = { steps: ["Krok 1"], mistakes: ["Błąd 1"] };
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        makeExerciseRow({
+          equipment: "barbell",
+          aliases: ["bench"],
+          instructions,
+          pattern: "push_horizontal",
+        }),
+      ],
+    });
+
+    const res = await request(app).get("/exercises").set(authHeaders());
+
+    expect(res.body[0]).toMatchObject({
+      equipment: "barbell",
+      aliases: ["bench"],
+      instructions,
+      pattern: "push_horizontal",
     });
   });
 
@@ -236,7 +263,7 @@ describe("POST /exercises", () => {
 
     expect(res.status).toBe(201);
     const [, params] = mockQuery.mock.calls[0] as [string, unknown[]];
-    expect(params.slice(-2)).toEqual(["duration_distance", "m"]);
+    expect(params.slice(5, 7)).toEqual(["duration_distance", "m"]);
     expect(res.body).toMatchObject({
       trackingType: "duration_distance",
       distanceUnit: "m",
@@ -251,7 +278,7 @@ describe("POST /exercises", () => {
     await request(app).post("/exercises").set(authHeaders()).send(validBody);
 
     const [, params] = mockQuery.mock.calls[0] as [string, unknown[]];
-    expect(params.slice(-2)).toEqual(["weight_reps", "km"]);
+    expect(params.slice(5, 7)).toEqual(["weight_reps", "km"]);
   });
 
   it("returns 400 for an unknown tracking type", async () => {
@@ -419,7 +446,7 @@ describe("PUT /exercises/:id", () => {
       String(call[0]).includes("UPDATE exercises"),
     ) as [string, unknown[]];
     expect(update[0]).toContain("COALESCE($7, tracking_type)");
-    expect(update[1].slice(-2)).toEqual([null, null]);
+    expect(update[1].slice(6, 8)).toEqual([null, null]);
   });
 
   it("returns 404 when exercise does not exist or is not owned", async () => {

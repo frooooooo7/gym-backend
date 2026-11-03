@@ -1,6 +1,7 @@
 import { logger, serializeError } from "../common/logger.js";
 import { getPool } from "./pool.js";
 import { syncSystemExerciseImages } from "../modules/exercises/system-exercise-images.js";
+import { syncSystemExerciseMeta } from "../modules/exercises/system-exercise-meta.js";
 
 interface Migration {
   name: string;
@@ -913,6 +914,20 @@ const MIGRATIONS: Migration[] = [
       WHERE e.id = v.id::uuid AND e.is_system = true;
     `,
   },
+  {
+    name: "032_exercise_equipment_aliases_instructions",
+    sql: `
+      -- Sprzęt, inne nazwy (szukanie), opis techniki i rodzaj ruchu (zamienniki).
+      -- Wszystko opcjonalne: starsze wersje aplikacji tych pól nie czytają.
+      -- Ćwiczenia systemowe dostają wartości przy starcie API
+      -- (syncSystemExerciseMeta), więc poprawka opisu nie wymaga migracji.
+      ALTER TABLE exercises
+        ADD COLUMN IF NOT EXISTS equipment    TEXT,
+        ADD COLUMN IF NOT EXISTS aliases      TEXT[] NOT NULL DEFAULT '{}',
+        ADD COLUMN IF NOT EXISTS instructions JSONB,
+        ADD COLUMN IF NOT EXISTS pattern      TEXT;
+    `,
+  },
 ];
 
 const ADVISORY_LOCK_ID = 3_742_116_919;
@@ -970,6 +985,8 @@ export const runMigrations = async (): Promise<void> => {
       if (synced.exercises > 0 || synced.sessionExercises > 0) {
         logger.info("[migrate] synced system exercise images", { ...synced });
       }
+      const meta = await syncSystemExerciseMeta(client);
+      if (meta > 0) logger.info("[migrate] synced system exercise meta", { exercises: meta });
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;

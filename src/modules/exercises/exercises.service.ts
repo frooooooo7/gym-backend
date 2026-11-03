@@ -14,6 +14,7 @@ import {
   exercisesRepository,
   type ExerciseRow,
   type ExerciseRowSansFavourite,
+  type ExerciseDetailsInput,
   type ExerciseTrackingInput,
   type OwnedExerciseImageMeta,
 } from "./exercises.repository.js";
@@ -29,6 +30,10 @@ const formatExercise = (row: ExerciseRow, userId?: string) => {
     imageUrl: row.image_url,
     trackingType: row.tracking_type ?? "weight_reps",
     distanceUnit: row.distance_unit ?? "km",
+    equipment: row.equipment ?? null,
+    aliases: row.aliases ?? [],
+    instructions: row.instructions ?? null,
+    pattern: row.pattern ?? null,
     createdAt: row.created_at,
     isFavourite: row.is_favourite,
     isMine,
@@ -42,6 +47,12 @@ const trackingOf = (body: UpsertBodyInput): ExerciseTrackingInput => ({
   distanceUnit: body.distanceUnit,
 });
 
+const detailsOf = (body: UpsertBodyInput): ExerciseDetailsInput => ({
+  equipment: body.equipment,
+  aliases: body.aliases,
+  instructions: body.instructions,
+});
+
 export type ExercisesRepositoryDeps = {
   list: (userId: string, query: ListQueryInput) => Promise<ExerciseRow[]>;
   insertUserExercise: (
@@ -52,6 +63,7 @@ export type ExercisesRepositoryDeps = {
     userId: string,
     clientId: string | undefined,
     tracking?: ExerciseTrackingInput,
+    details?: ExerciseDetailsInput,
   ) => Promise<{ row: ExerciseRowSansFavourite; created: boolean }>;
   update: (
     name: string,
@@ -61,6 +73,7 @@ export type ExercisesRepositoryDeps = {
     exerciseId: string,
     userId: string,
     tracking?: ExerciseTrackingInput,
+    details?: ExerciseDetailsInput,
   ) => Promise<ExerciseRowSansFavourite | null>;
   deleteIfOwned: (
     exerciseId: string,
@@ -105,6 +118,7 @@ export const createExercisesService = (repo: ExercisesRepositoryDeps) => ({
       userId,
       body.clientId,
       trackingOf(body),
+      detailsOf(body),
     );
     return {
       exercise: formatExercise({ ...row, is_favourite: false }, userId),
@@ -126,6 +140,7 @@ export const createExercisesService = (repo: ExercisesRepositoryDeps) => ({
         exerciseId,
         userId,
         trackingOf(body),
+        detailsOf(body),
       ),
       repo.hasFavourite(userId, exerciseId),
     ]);

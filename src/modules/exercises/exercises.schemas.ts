@@ -117,7 +117,11 @@ export const upsertBodySchema = z.object({
       mistakes: z.array(z.string().trim().min(1).max(200)).max(6),
     })
     .nullable()
-    .optional(),
+    .optional()
+    // Pusty opis zapisujemy jako brak opisu.
+    .transform((v) =>
+      v && v.steps.length === 0 && v.mistakes.length === 0 ? null : v,
+    ),
 });
 
 export type ListQueryInput = z.infer<typeof listQuerySchema>;

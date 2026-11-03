@@ -926,6 +926,28 @@ const MIGRATIONS: Migration[] = [
         ADD COLUMN IF NOT EXISTS aliases      TEXT[] NOT NULL DEFAULT '{}',
         ADD COLUMN IF NOT EXISTS instructions JSONB,
         ADD COLUMN IF NOT EXISTS pattern      TEXT;
+
+      ALTER TABLE exercises
+        ADD CONSTRAINT exercises_equipment_check
+        CHECK (equipment IS NULL OR equipment IN (
+          'barbell','dumbbell','kettlebell','cable','machine','bodyweight','band','other'
+        ));
+    `,
+  },
+  {
+    name: "033_system_exercises_timed_tracking",
+    sql: `
+      -- Plank i rozciąganie to ćwiczenia na czas, nie ciężar × powtórzenia
+      -- (Deska bokiem już ma czas). Zmieniamy tylko ćwiczenia systemowe,
+      -- własnych użytkowników nie ruszamy.
+      UPDATE exercises
+         SET tracking_type = 'duration'
+       WHERE is_system
+         AND id IN (
+           'a1000000-0000-0000-0000-000000000012',
+           'a1000000-0000-0000-0000-000000000014'
+         )
+         AND tracking_type = 'weight_reps';
     `,
   },
 ];
@@ -981,12 +1003,14 @@ export const runMigrations = async (): Promise<void> => {
     try {
       await client.query("SET LOCAL statement_timeout = 0");
       const synced = await syncSystemExerciseImages(client);
+      const meta = await syncSystemExerciseMeta(client);
       await client.query("COMMIT");
       if (synced.exercises > 0 || synced.sessionExercises > 0) {
         logger.info("[migrate] synced system exercise images", { ...synced });
       }
-      const meta = await syncSystemExerciseMeta(client);
-      if (meta > 0) logger.info("[migrate] synced system exercise meta", { exercises: meta });
+      if (meta > 0) {
+        logger.info("[migrate] synced system exercise meta", { exercises: meta });
+      }
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;

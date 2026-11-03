@@ -86,7 +86,38 @@ describe("upsertBodySchema details", () => {
     expect(parsed.instructions?.steps).toEqual(["Krok"]);
   });
 
+  it("stores empty instructions as null", () => {
+    const parsed = upsertBodySchema.parse({
+      ...base,
+      instructions: { steps: [], mistakes: [] },
+    });
+    expect(parsed.instructions).toBeNull();
+  });
+
   it("rejects unknown equipment", () => {
     expect(upsertBodySchema.safeParse({ ...base, equipment: "laser" }).success).toBe(false);
+  });
+});
+
+describe("system exercise data fixes", () => {
+  const at = (n: number) =>
+    SYSTEM_EXERCISE_META[`a1000000-0000-0000-0000-${String(n).padStart(12, "0")}`]!;
+
+  it("gives hip adduction, dips, pullovers and skills their own patterns", () => {
+    expect(at(91).pattern).toBe("hip_adduction");
+    expect(at(7).pattern).toBe("dip");
+    expect(at(77).pattern).toBe("dip");
+    expect(at(81).pattern).toBe("pullover");
+    expect(at(80).pattern).toBe("pullover");
+    for (const n of [20, 24, 32]) expect(at(n).pattern).toBe("skill");
+  });
+
+  it("does not use stale aliases or clumsy wording", () => {
+    const all = Object.values(SYSTEM_EXERCISE_META);
+    const text = JSON.stringify(all);
+    expect(text).not.toContain("kontrolowanie");
+    expect(at(32).aliases).not.toContain("flaga przodem");
+    expect(at(24).aliases).not.toContain("mus");
+    expect(at(19).aliases).not.toContain("skipping");
   });
 });

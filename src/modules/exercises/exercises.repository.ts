@@ -70,7 +70,10 @@ export const exercisesRepository = {
 
     if (q) {
       params.push(containsPattern(q.toLowerCase()));
-      conditions.push(`lower(e.name) LIKE $${params.length}`);
+      conditions.push(
+        `(lower(e.name) LIKE $${params.length}
+          OR EXISTS (SELECT 1 FROM unnest(e.aliases) a WHERE lower(a) LIKE $${params.length}))`,
+      );
     }
 
     if (muscle !== "all") {
@@ -164,7 +167,8 @@ export const exercisesRepository = {
            tracking_type = EXCLUDED.tracking_type,
            distance_unit = EXCLUDED.distance_unit,
            equipment = COALESCE(EXCLUDED.equipment, exercises.equipment),
-           aliases = EXCLUDED.aliases,
+           aliases = CASE WHEN cardinality(EXCLUDED.aliases) = 0
+                          THEN exercises.aliases ELSE EXCLUDED.aliases END,
            instructions = COALESCE(EXCLUDED.instructions, exercises.instructions)
          RETURNING ${RETURNING_COLUMNS}, client_id,
            (xmax = 0) AS inserted`,

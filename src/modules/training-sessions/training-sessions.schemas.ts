@@ -191,10 +191,11 @@ const postTitle = z
 
 /**
  * Warm-up length in seconds (client stopwatch before the session starts).
- * Cosmetic like the post title: out-of-range values are normalised, not
- * rejected, so they never block a workout from syncing. Under a minute or
- * null clears it (no warm-up); above two hours is cut to two hours. Left out
- * (`undefined`) keeps the stored value for older app versions.
+ * Cosmetic like the post title: out-of-range numbers are normalised, not
+ * rejected, so they never block a workout from syncing (a non-number is still
+ * a 400 `invalid_warmup_seconds`; the app always sends an int). Under a
+ * minute or null clears it (no warm-up); above two hours is cut to two hours.
+ * Left out (`undefined`) keeps the stored value for older app versions.
  */
 export const WARMUP_SECONDS_MAX = 7200;
 

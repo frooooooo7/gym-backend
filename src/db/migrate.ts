@@ -979,6 +979,21 @@ const MIGRATIONS: Migration[] = [
        );
     `,
   },
+  {
+    name: "034_training_session_warmup_seconds",
+    sql: `
+      -- Czas rozgrzewki przed treningiem (stoper w aplikacji). Osobno od
+      -- started_at/finished_at, bo zegar treningu rusza po rozgrzewce. NULL =
+      -- bez rozgrzewki albo krótsza niż minuta.
+      ALTER TABLE training_sessions
+        ADD COLUMN IF NOT EXISTS warmup_seconds INTEGER;
+      ALTER TABLE training_sessions
+        DROP CONSTRAINT IF EXISTS training_sessions_warmup_seconds_range;
+      ALTER TABLE training_sessions
+        ADD CONSTRAINT training_sessions_warmup_seconds_range
+        CHECK (warmup_seconds IS NULL OR warmup_seconds BETWEEN 1 AND 7200);
+    `,
+  },
 ];
 
 const ADVISORY_LOCK_ID = 3_742_116_919;

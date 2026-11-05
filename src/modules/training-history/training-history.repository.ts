@@ -37,6 +37,7 @@ export interface TrainingHistoryDetailRow {
   note: string | null;
   shared_to_profile: boolean;
   post_title: string | null;
+  warmup_seconds: number | null;
   post_photo_url: string | null;
   updated_at: Date;
 }
@@ -224,6 +225,7 @@ export const trainingHistoryRepository = {
         ts.note,
         ts.shared_to_profile,
         ts.post_title,
+        ts.warmup_seconds,
         ts.post_photo_url,
         ts.updated_at
       FROM training_sessions ts

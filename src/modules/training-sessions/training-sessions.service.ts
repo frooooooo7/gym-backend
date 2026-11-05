@@ -34,6 +34,7 @@ const formatSession = (row: TrainingSessionRow) => ({
   finishedAt: row.finished_at,
   sharedToProfile: row.shared_to_profile,
   postTitle: row.post_title,
+  warmupSeconds: row.warmup_seconds,
   postPhotoUrl: row.post_photo_url,
   createdAt: row.created_at,
   updatedAt: row.updated_at,

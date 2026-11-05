@@ -149,7 +149,7 @@ Auth column: 🔒 = `Authorization: Bearer <jwt>` required.
 | POST | `/training-plans` | 🔒 | Create (upsert by `clientId`). |
 | PUT | `/training-plans/:id` | 🔒 | Replace plan. |
 | DELETE | `/training-plans/:id` | 🔒 | Delete plan. |
-| POST | `/training-sessions` | 🔒 | Create/upsert session by `clientId` (`410 session_deleted` if tombstoned). |
+| POST | `/training-sessions` | 🔒 | Create/upsert session by `clientId` (`410 session_deleted` if tombstoned). Optional `warmupSeconds` (pre-workout warm-up, normalised: < 60 s or `null` = none, capped at 7200; left out keeps the stored value). Returned by session and history-detail responses. |
 | PUT | `/training-sessions/:id` | 🔒 | Full edit (also completed sessions). |
 | GET | `/training-sessions/active` | 🔒 | Active session or `null`. |
 | GET | `/training-sessions/history` | 🔒 | Sync page incl. `deleted` tombstones (`updatedSince`, `cursor`). |

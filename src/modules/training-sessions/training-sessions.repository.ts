@@ -70,6 +70,7 @@ export interface TrainingSessionRow {
   finished_at: Date | null;
   shared_to_profile: boolean;
   post_title: string | null;
+  warmup_seconds: number | null;
   post_photo_url: string | null;
   created_at: Date;
   updated_at: Date;
@@ -330,7 +331,7 @@ const loadSessions = async (
     `SELECT id, client_id, user_id, plan_id, plan_client_id, plan_name,
             plan_color_key, plan_icon_key, status,
             note, started_at, finished_at, shared_to_profile, post_title,
-            post_photo_url, created_at, updated_at
+            warmup_seconds, post_photo_url, created_at, updated_at
      FROM training_sessions
      WHERE user_id = $1 ${whereSql}
      ORDER BY started_at DESC, id DESC
@@ -420,9 +421,9 @@ export const trainingSessionsRepository = {
         `INSERT INTO training_sessions
           (user_id, client_id, plan_id, plan_client_id, plan_name, status,
            note, started_at, finished_at, shared_to_profile,
-           plan_color_key, plan_icon_key, post_title)
+           plan_color_key, plan_icon_key, post_title, warmup_seconds)
          VALUES ($1, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $8, $9, $10,
-                 $11, $12, $13)
+                 $11, $12, $13, $15)
          ON CONFLICT (user_id, client_id) WHERE client_id IS NOT NULL
          DO UPDATE SET
            plan_id = EXCLUDED.plan_id,
@@ -436,7 +437,9 @@ export const trainingSessionsRepository = {
            plan_color_key = EXCLUDED.plan_color_key,
            plan_icon_key = EXCLUDED.plan_icon_key,
            post_title = CASE WHEN $14::boolean THEN EXCLUDED.post_title
-                             ELSE training_sessions.post_title END
+                             ELSE training_sessions.post_title END,
+           warmup_seconds = CASE WHEN $16::boolean THEN EXCLUDED.warmup_seconds
+                                 ELSE training_sessions.warmup_seconds END
          RETURNING id, (xmax = 0) AS inserted`,
         [
           userId,
@@ -453,6 +456,8 @@ export const trainingSessionsRepository = {
           body.planIconKey ?? null,
           body.postTitle ?? null,
           body.postTitle !== undefined,
+          body.warmupSeconds ?? null,
+          body.warmupSeconds !== undefined,
         ],
       );
       const sessionId = rows[0].id as string;
@@ -497,7 +502,9 @@ export const trainingSessionsRepository = {
          SET plan_id = $1::uuid, plan_client_id = $2::uuid, plan_name = $3,
              status = $4, note = $5, started_at = $6, finished_at = $7,
              shared_to_profile = $8, plan_color_key = $11, plan_icon_key = $12,
-             post_title = CASE WHEN $14::boolean THEN $13 ELSE post_title END
+             post_title = CASE WHEN $14::boolean THEN $13 ELSE post_title END,
+             warmup_seconds = CASE WHEN $16::boolean THEN $15
+                                   ELSE warmup_seconds END
          WHERE id = $9 AND user_id = $10`,
         [
           body.planId ?? null,
@@ -514,6 +521,8 @@ export const trainingSessionsRepository = {
           body.planIconKey ?? null,
           body.postTitle ?? null,
           body.postTitle !== undefined,
+          body.warmupSeconds ?? null,
+          body.warmupSeconds !== undefined,
         ],
       );
       if (!rowCount) {

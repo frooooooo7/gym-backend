@@ -138,6 +138,7 @@ export const trainingHistoryService = {
       note: session.note,
       sharedToProfile: session.shared_to_profile,
       postTitle: session.post_title,
+      warmupSeconds: session.warmup_seconds,
       postPhotoUrl: session.post_photo_url,
       updatedAt: session.updated_at.toISOString(),
       exercises: exercises.map((exercise) => ({

@@ -91,6 +91,7 @@ const sessionRow = {
   finished_at: new Date(validBody.finishedAt),
   shared_to_profile: true,
   post_title: null,
+  warmup_seconds: null,
   post_photo_url: null,
   created_at: new Date("2026-05-12T10:00:00Z"),
   updated_at: new Date("2026-05-12T11:00:00Z"),
@@ -243,8 +244,8 @@ describe("training sessions routes", () => {
     );
     // shared_to_profile, then plan_color_key, plan_icon_key, post_title and
     // the "postTitle was sent" flag
-    expect(insertCall?.[1]?.at(-5)).toBe(false);
-    expect(insertCall?.[1]?.slice(-2)).toEqual([null, false]);
+    expect(insertCall?.[1]?.at(-7)).toBe(false);
+    expect(insertCall?.[1]?.slice(-4, -2)).toEqual([null, false]);
     expect(res.body.sharedToProfile).toBe(false);
   });
 
@@ -357,7 +358,7 @@ describe("training sessions routes", () => {
       const sessionInsert = mockQuery.mock.calls.find((call) =>
         String(call[0]).includes("INSERT INTO training_sessions"),
       )?.[1] as unknown[];
-      expect(sessionInsert.slice(-4, -2)).toEqual(["sky", "bolt"]);
+      expect(sessionInsert.slice(-6, -4)).toEqual(["sky", "bolt"]);
       expect(res.body).toMatchObject({ planColorKey: "sky", planIconKey: "bolt" });
       expect(res.body.exercises[0]).toMatchObject({ restSeconds: 90, supersetGroup: "B" });
     });
@@ -760,7 +761,99 @@ describe("training sessions routes", () => {
     expect(String(updateCall?.[0])).toContain(
       "post_title = CASE WHEN $14::boolean THEN $13 ELSE post_title END",
     );
-    expect(updateCall?.[1]?.slice(-2)).toEqual(["Mój tytuł", true]);
+    expect(updateCall?.[1]?.slice(-4, -2)).toEqual(["Mój tytuł", true]);
+  });
+
+  describe("warm-up time", () => {
+    const stubCreate = (warmupSeconds: number | null) =>
+      whenSqlContains({
+        "INSERT INTO training_sessions": {
+          rows: [{ id: SESSION_ID, inserted: true }],
+        },
+        "INSERT INTO training_session_exercises": {
+          rows: [{ id: SESSION_EXERCISE_ID }],
+        },
+        "FROM training_sessions": {
+          rows: [{ ...sessionRow, warmup_seconds: warmupSeconds }],
+        },
+      });
+    const insertParams = () =>
+      mockQuery.mock.calls.find((call) =>
+        String(call[0]).includes("INSERT INTO training_sessions"),
+      )?.[1] as unknown[];
+
+    it("POST stores warmupSeconds and returns it", async () => {
+      stubCreate(504);
+      const res = await request(app)
+        .post("/training-sessions")
+        .set(authHeaders())
+        .send({ ...validBody, warmupSeconds: 504 });
+
+      expect(res.status).toBe(201);
+      expect(res.body.warmupSeconds).toBe(504);
+      expect(insertParams().slice(-2)).toEqual([504, true]);
+    });
+
+    it("POST without warmupSeconds keeps the stored value (old apps)", async () => {
+      stubCreate(null);
+      const res = await request(app)
+        .post("/training-sessions")
+        .set(authHeaders())
+        .send(validBody);
+
+      expect(res.status).toBe(201);
+      expect(res.body.warmupSeconds).toBeNull();
+      expect(insertParams().slice(-2)).toEqual([null, false]);
+    });
+
+    it.each([
+      [30, null],
+      [0, null],
+      [null, null],
+      [90.4, 90],
+      [99999, 7200],
+    ])("POST normalises warmupSeconds %s to %s", async (sent, stored) => {
+      stubCreate(stored);
+      const res = await request(app)
+        .post("/training-sessions")
+        .set(authHeaders())
+        .send({ ...validBody, warmupSeconds: sent });
+
+      expect(res.status).toBe(201);
+      expect(insertParams().slice(-2)).toEqual([stored, true]);
+    });
+
+    it("rejects a non-numeric warmupSeconds", async () => {
+      const res = await request(app)
+        .post("/training-sessions")
+        .set(authHeaders())
+        .send({ ...validBody, warmupSeconds: "8 min" });
+
+      expect(res.status).toBe(400);
+    });
+
+    it("PUT writes warmupSeconds only when it is sent", async () => {
+      whenSqlContains({
+        "UPDATE training_sessions": { rowCount: 1 },
+        "INSERT INTO training_session_exercises": {
+          rows: [{ id: SESSION_EXERCISE_ID }],
+        },
+        "FROM training_sessions": {
+          rows: [{ ...sessionRow, warmup_seconds: 600 }],
+        },
+      });
+      const res = await request(app)
+        .put(`/training-sessions/${SESSION_ID}`)
+        .set(authHeaders())
+        .send({ ...validBody, warmupSeconds: 600 });
+
+      expect(res.status).toBe(200);
+      expect(res.body.warmupSeconds).toBe(600);
+      const updateCall = mockQuery.mock.calls.find((call) =>
+        String(call[0]).includes("UPDATE training_sessions"),
+      );
+      expect(updateCall?.[1]?.slice(-2)).toEqual([600, true]);
+    });
   });
 
   describe("post photo", () => {
@@ -1215,6 +1308,8 @@ describe("training sessions routes", () => {
       USER_ID,
       null,
       null,
+      null,
+      false,
       null,
       false,
     ]);

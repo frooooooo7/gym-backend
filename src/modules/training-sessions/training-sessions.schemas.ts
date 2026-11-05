@@ -189,6 +189,26 @@ const postTitle = z
     return codePoints.slice(0, POST_TITLE_MAX_LENGTH).join("").trimEnd();
   });
 
+/**
+ * Warm-up length in seconds (client stopwatch before the session starts).
+ * Cosmetic like the post title: out-of-range numbers are normalised, not
+ * rejected, so they never block a workout from syncing (a non-number is still
+ * a 400 `invalid_warmup_seconds`; the app always sends an int). Under a
+ * minute or null clears it (no warm-up); above two hours is cut to two hours.
+ * Left out (`undefined`) keeps the stored value for older app versions.
+ */
+export const WARMUP_SECONDS_MAX = 7200;
+
+const warmupSeconds = z
+  .number({ error: "invalid_warmup_seconds" })
+  .nullable()
+  .optional()
+  .transform((value) => {
+    if (value === undefined) return undefined;
+    if (value === null || !Number.isFinite(value) || value < 60) return null;
+    return Math.min(Math.round(value), WARMUP_SECONDS_MAX);
+  });
+
 export const trainingSessionBodySchema = z
   .object({
     clientId: postgresUuid,
@@ -203,6 +223,7 @@ export const trainingSessionBodySchema = z
     finishedAt: optionalDate,
     sharedToProfile: z.boolean().optional().default(false),
     postTitle,
+    warmupSeconds,
     exercises: z
       .array(sessionExerciseSchema)
       .min(1, "missing_exercises")

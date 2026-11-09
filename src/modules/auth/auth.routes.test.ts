@@ -56,6 +56,7 @@ interface FakeUser {
 
 let users = new Map<string, FakeUser>();
 let deletedExerciseImageUrls: string[] = [];
+let deletedPlanCoverUrls: string[] = [];
 let failOn: string | null = null;
 
 const publicCols = (u: FakeUser) => ({
@@ -118,6 +119,9 @@ const fakeDb = (sql: string, params: unknown[] = []) => {
   if (s.includes("FOR UPDATE")) {
     return result(u ? [{ avatar_url: u.avatar_url }] : []);
   }
+  if (s.includes("DELETE FROM training_plans")) {
+    return result(deletedPlanCoverUrls.map((cover_url) => ({ cover_url })));
+  }
   if (s.includes("DELETE FROM exercises")) {
     return result(deletedExerciseImageUrls.map((image_url) => ({ image_url })));
   }
@@ -164,6 +168,7 @@ const decodeTv = (token: string) => (jwt.verify(token, JWT_SECRET) as { tv?: num
 beforeEach(() => {
   users = new Map();
   deletedExerciseImageUrls = [];
+  deletedPlanCoverUrls = [];
   failOn = null;
   clearTokenVersionCache();
   mockQuery.mockReset();
@@ -366,6 +371,14 @@ describe("POST /auth/change-password", () => {
     expect(res.body.error).toBe("password_too_weak");
   });
 
+  it("rejects common passwords at registration too", async () => {
+    const res = await request(app)
+      .post("/auth/register")
+      .send({ email: "common@gym.com", password: "Password123", firstName: "A", lastName: "B" });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("password_too_common");
+  });
+
   it("400 password_unchanged when new equals current", async () => {
     seedUser();
     const res = await request(app)
@@ -491,12 +504,17 @@ describe("DELETE /auth/me", () => {
   it("deletes the account in one transaction, removes files, revokes the token", async () => {
     const avatarName = `test-delete-${randomUUID()}.png`;
     const imageName = `test-delete-${randomUUID()}.jpg`;
+    const coverName = `test-delete-${randomUUID()}.webp`;
+    const coversDir = path.join(process.cwd(), "uploads", "plan-covers");
     await fs.mkdir(AVATARS_DIR, { recursive: true });
     await fs.mkdir(IMAGES_DIR, { recursive: true });
+    await fs.mkdir(coversDir, { recursive: true });
     await fs.writeFile(path.join(AVATARS_DIR, avatarName), "x");
     await fs.writeFile(path.join(IMAGES_DIR, imageName), "x");
+    await fs.writeFile(path.join(coversDir, coverName), "x");
     seedUser({ id: uid, avatar_url: `/uploads/avatars/${avatarName}` });
     deletedExerciseImageUrls = [`/uploads/exercise-images/${imageName}`];
+    deletedPlanCoverUrls = [`/uploads/plan-covers/${coverName}`];
 
     const token = tokenFor(uid, 0);
     expect((await request(app).get("/auth/me").set(bearer(token))).status).toBe(200);
@@ -519,6 +537,7 @@ describe("DELETE /auth/me", () => {
 
     await expect(fs.access(path.join(AVATARS_DIR, avatarName))).rejects.toThrow();
     await expect(fs.access(path.join(IMAGES_DIR, imageName))).rejects.toThrow();
+    await expect(fs.access(path.join(coversDir, coverName))).rejects.toThrow();
 
     const after = await request(app).get("/auth/me").set(bearer(token));
     expect(after.status).toBe(401);

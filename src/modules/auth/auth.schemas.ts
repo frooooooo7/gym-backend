@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isCommonPassword } from "./common-passwords.js";
 
 /** bcrypt only uses the first 72 bytes — anything after them is ignored. */
 export const BCRYPT_MAX_PASSWORD_BYTES = 72;
@@ -13,8 +14,9 @@ const MAX_CHECKED_PASSWORD_LENGTH = 1024;
 /**
  * Password strength rules shared by registration and change-password —
  * `password_too_short` (< 8 chars), `password_too_weak` (no uppercase
- * letter / no digit) or `password_too_long` (> 72 bytes in UTF-8, which
- * bcrypt would silently truncate).
+ * letter / no digit), `password_too_common` (on the common-password list,
+ * e.g. `Password1`) or `password_too_long` (> 72 bytes in UTF-8, which bcrypt
+ * would silently truncate).
  */
 const withPasswordRules = (schema: z.ZodString) =>
   schema
@@ -24,7 +26,8 @@ const withPasswordRules = (schema: z.ZodString) =>
       "password_too_long",
     )
     .regex(/[A-Z]/, "password_too_weak")
-    .regex(/[0-9]/, "password_too_weak");
+    .regex(/[0-9]/, "password_too_weak")
+    .refine((value) => !isCommonPassword(value), "password_too_common");
 
 export const registerSchema = z.object({
   email: z.string().email("invalid_email"),

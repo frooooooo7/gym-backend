@@ -4,6 +4,7 @@ import { AppError } from "../../common/errors.js";
 import { removeManagedImage } from "../../common/image-upload.js";
 import { EXERCISE_IMAGES_PUBLIC_PREFIX } from "../exercises/exercises.image-upload.js";
 import { AVATARS_PUBLIC_PREFIX } from "../profile/profile.avatar-upload.js";
+import { PLAN_COVERS_PUBLIC_PREFIX } from "../training-plans/training-plans.cover.js";
 import { POST_PHOTOS_PUBLIC_PREFIX } from "../training-sessions/training-sessions.post-photo.js";
 import { env } from "../../config/env.js";
 import { JWT_ALGORITHM } from "../../middleware/auth.js";
@@ -165,6 +166,9 @@ export const authService = {
       ),
       ...files.postPhotoUrls.map((url) =>
         removeManagedImage(url, POST_PHOTOS_PUBLIC_PREFIX),
+      ),
+      ...files.planCoverUrls.map((url) =>
+        removeManagedImage(url, PLAN_COVERS_PUBLIC_PREFIX),
       ),
     ]);
   },

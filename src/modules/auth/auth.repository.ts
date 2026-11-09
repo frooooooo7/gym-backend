@@ -21,6 +21,8 @@ export interface DeletedAccountFiles {
   exerciseImageUrls: string[];
   /** post_photo_url of the user's training sessions. */
   postPhotoUrls: string[];
+  /** cover_url of the user's training plans (deleted with the account). */
+  planCoverUrls: string[];
 }
 
 const USER_COLUMNS =
@@ -164,7 +166,10 @@ export const authRepository = {
         (row) => row.post_photo_url != null,
       );
 
-      await client.query("DELETE FROM training_plans WHERE user_id = $1", [id]);
+      const { rows: planRows } = await client.query(
+        "DELETE FROM training_plans WHERE user_id = $1 RETURNING cover_url",
+        [id],
+      );
 
       const { rows: exerciseRows } = await client.query(
         `DELETE FROM exercises e
@@ -186,6 +191,9 @@ export const authRepository = {
           .map((row) => row.image_url as string | null)
           .filter((url): url is string => !!url),
         postPhotoUrls: photoRows.map((row) => row.post_photo_url as string),
+        planCoverUrls: planRows
+          .map((row) => row.cover_url as string | null)
+          .filter((url): url is string => !!url),
       };
     } catch (e) {
       await client.query("ROLLBACK").catch(() => undefined);
